@@ -10,20 +10,7 @@ Hướng dẫn nhanh
   - final_model/: model embedding (SentenceTransformers) đã fine-tune
 
 Thiết lập môi trường
-1) Tạo conda env Python 3.10:
-   conda create -n mln131-rag -y python=3.10
-
-2) Cài package:
-   conda run -n mln131-rag pip install -r requirements.txt
-
-3) Cấu hình API key Gemini (đã có trong .env), nếu cần sửa:
-   mở file .env và thay GEMINI_API_KEY=...
-
-Build index (lần đầu)
-   conda run -n mln131-rag python scripts/build_index.py
-
-Chạy server FastAPI
-   conda run -n mln131-rag uvicorn app.main:app --reload --port 8000 --host 127.0.0.1
+python 3.10
 
 API
 - GET /health: kiểm tra trạng thái

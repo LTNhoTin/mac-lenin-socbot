@@ -1,12 +1,14 @@
 fastapi
-uvicorn
+uvicorn[standard]
 python-dotenv
+python-multipart
 sentence-transformers
 faiss-cpu
 numpy
 scikit-learn
 scipy
-google-generativeai
 pydantic
 requests
 torch
+openai
+rich

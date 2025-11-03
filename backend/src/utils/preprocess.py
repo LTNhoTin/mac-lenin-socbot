@@ -3,19 +3,16 @@ from typing import List
 
 
 def strip_bom(text: str) -> str:
-    # Loại bỏ BOM nếu có
     return text.lstrip("\ufeff")
 
 
 def normalize_newlines(text: str) -> str:
     text = text.replace("\r\n", "\n").replace("\r", "\n")
-    # Thu gọn số lượng dòng trống
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text
 
 
 def unify_bullets(text: str) -> str:
-    # Chuẩn hoá các ký hiệu bullet
     bullets = ["•", "▪", "‣", "·", "○", "●", "–", "—"]
     for b in bullets:
         text = text.replace(b, "-")
@@ -28,7 +25,6 @@ def is_heading(line: str) -> bool:
         return False
     if len(s) > 120:
         return False
-    # Heuristic: dòng có nhiều chữ in hoa hoặc bắt đầu bằng từ khoá
     upper_ratio = sum(1 for ch in s if ch.isupper()) / max(1, len(s))
     if upper_ratio > 0.6:
         return True
@@ -42,7 +38,6 @@ def is_bullet(line: str) -> bool:
 
 
 def reflow_paragraph(paragraph: str) -> str:
-    # Gộp các dòng bị ngắt giữa câu, giữ lại dòng heading/bullet
     lines = [l.strip() for l in paragraph.split("\n") if l.strip()]
     new_lines: List[str] = []
     current = ""
@@ -56,11 +51,9 @@ def reflow_paragraph(paragraph: str) -> str:
         if not current:
             current = line
         else:
-            # Nếu ngắt dòng bằng dấu gạch nối ở cuối => nối trực tiếp
             if current.endswith("-"):
                 current = current[:-1] + line
             else:
-                # Nối bằng khoảng trắng để tạo câu hoàn chỉnh
                 current = current + " " + line
     if current:
         new_lines.append(current.strip())
@@ -72,7 +65,6 @@ def merge_short_paragraphs(paragraphs: List[str], min_words: int = 20) -> List[s
     for p in paragraphs:
         wc = len(re.findall(r"\w+", p))
         if wc < min_words and merged and not is_heading(p):
-            # Hợp nhất đoạn ngắn vào đoạn trước nếu phù hợp
             merged[-1] = merged[-1].rstrip() + "\n" + p.strip()
         else:
             merged.append(p)
@@ -80,21 +72,16 @@ def merge_short_paragraphs(paragraphs: List[str], min_words: int = 20) -> List[s
 
 
 def preprocess_text(text: str) -> str:
-    # Chuỗi các bước làm sạch và tái cấu trúc đoạn để chunk hợp lý
     text = strip_bom(text)
     text = normalize_newlines(text)
     text = unify_bullets(text)
 
-    # Tách theo đoạn (\n\n), sau đó reflow từng đoạn để ghép những dòng ngắt
     paragraphs = [p for p in text.split("\n\n")]
     paragraphs = [reflow_paragraph(p) for p in paragraphs if p and p.strip()]
 
-    # Hợp nhất các đoạn quá ngắn
     paragraphs = merge_short_paragraphs(paragraphs, min_words=20)
 
-    # Ghép lại thành văn bản, đảm bảo đúng ranh giới đoạn
     processed = "\n\n".join(paragraphs)
-    # Thu gọn khoảng trắng
     processed = re.sub(r"[ \t]+", " ", processed)
     processed = re.sub(r"\n{3,}", "\n\n", processed)
     return processed.strip()

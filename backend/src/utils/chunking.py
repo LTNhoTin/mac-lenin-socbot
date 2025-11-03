@@ -3,19 +3,15 @@ from typing import List, Dict
 
 
 def normalize_text(text: str) -> str:
-    # Chuẩn hoá khoảng trắng
     text = text.replace("\r", "")
     text = re.sub(r"\t+", " ", text)
     text = re.sub(r" +", " ", text)
-    # Giữ lại tách đoạn
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
 
 def split_into_sentences(paragraph: str) -> List[str]:
-    # Regex đơn giản để tách câu, tránh phụ thuộc nặng (spacy/nltk)
     parts = re.split(r"(?<=[\.!\?])\s+", paragraph)
-    # Gộp những phần rỗng
     return [p.strip() for p in parts if p and p.strip()]
 
 
@@ -63,13 +59,10 @@ def chunk_text(
         sentences = split_into_sentences(para)
         for sent in sentences:
             sent_words = re.findall(r"\w+", sent)
-            # Nếu thêm câu này vượt quá chunk_size, flush chunk hiện tại, thêm overlap
             if len(current_words) + len(sent_words) > chunk_size:
                 flush_chunk()
-                # Thiết lập overlap: giữ lại phần cuối của chunk trước
                 if chunk_overlap > 0:
                     overlap_words = current_words[-chunk_overlap:] if len(current_words) > chunk_overlap else current_words
-                    # Cần rebuild sentences từ overlap_words (đơn giản: gắn vào câu cuối cùng)
                     if current_sentences:
                         overlap_tail = " ".join(overlap_words)
                         current_sentences = [overlap_tail]
@@ -84,10 +77,8 @@ def chunk_text(
             current_sentences.append(sent)
             current_words.extend(sent_words)
 
-    # Flush phần còn lại
     flush_chunk()
 
-    # Loại bỏ chunk quá ngắn (nhiễu), ví dụ < 40 từ
     cleaned = [c for c in chunks if word_count(c["text"]) >= 40]
     return cleaned if cleaned else chunks
 
