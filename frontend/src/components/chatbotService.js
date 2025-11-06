@@ -63,3 +63,26 @@ export const sendMessageWithFileService = async (promptInput, file, topK = null,
       latency_ms: result.latency_ms
     };
 };
+
+// Text-to-Speech API call
+export const textToSpeechService = async (text, voice = "nova", model = "tts-1") => {
+    const response = await fetch(`${API_BASE_URL}/tts`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        text: text,
+        voice: voice,
+        model: model
+      }),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: "Network response was not ok" }));
+      throw new Error(errorData.error || "Failed to generate speech");
+    }
+    
+    // Trả về blob để có thể phát audio
+    return await response.blob();
+};

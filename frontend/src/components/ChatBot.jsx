@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import ScaleLoader from 'react-spinners/ScaleLoader';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faMessage } from '@fortawesome/free-regular-svg-icons';
+import { faVolumeHigh, faVolumeXmark } from '@fortawesome/free-solid-svg-icons';
 import ReactMarkdown from 'react-markdown';
 import robot_img from '../assets/ic5.png';
 import { sendMessageChatService, sendMessageWithFileService } from './chatbotService';
@@ -21,6 +22,8 @@ function ChatBot(props) {
     const [counter, setCounter] = useState(0);
     const [selectedFile, setSelectedFile] = useState(null);
     const [filePreview, setFilePreview] = useState(null);
+    const [speakingMessageIndex, setSpeakingMessageIndex] = useState(null); // Index của tin nhắn đang được đọc
+    const speechSynthesisRef = useRef(null); // Ref cho Web Speech API
     const [dataChat, setDataChat] = useState([
         [
             'start',
@@ -48,6 +51,20 @@ function ChatBot(props) {
         scrollToEndChat();
         inputRef.current.focus();
     }, [isLoading]);
+
+    // Khởi tạo Web Speech API
+    useEffect(() => {
+        if ('speechSynthesis' in window) {
+            speechSynthesisRef.current = window.speechSynthesis;
+        }
+        
+        // Cleanup: dừng phát âm thanh khi component unmount
+        return () => {
+            if (speechSynthesisRef.current) {
+                speechSynthesisRef.current.cancel();
+            }
+        };
+    }, []);
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -187,6 +204,140 @@ function ChatBot(props) {
         }
     };
 
+    // Hàm kiểm tra xem tin nhắn có phải là câu chuyện không
+    const isStoryMessage = (messageText) => {
+        if (!messageText) return false;
+        // Kiểm tra các từ khóa cho thấy đây là câu chuyện
+        const storyKeywords = [
+            'câu chuyện', 'kể chuyện', 'chuyện kể', 'hồi đó', 
+            'một lần', 'ngày xưa', 'thời gian', 'bác hồ', 'chủ tịch hồ chí minh',
+            'trên tàu', 'làm việc', 'công nhân', 'cách mạng'
+        ];
+        const lowerText = messageText.toLowerCase();
+        return storyKeywords.some(keyword => lowerText.includes(keyword));
+    };
+
+    // Hàm phát âm thanh cho câu chuyện sử dụng Web Speech API (miễn phí)
+    const speakStory = (messageText, messageIndex) => {
+        if (!speechSynthesisRef.current) {
+            alert('Trình duyệt của bạn không hỗ trợ tính năng đọc văn bản');
+            return;
+        }
+
+        // Dừng tin nhắn đang phát (nếu có)
+        if (speakingMessageIndex !== null) {
+            speechSynthesisRef.current.cancel();
+        }
+
+        // Nếu đang phát cùng tin nhắn này thì dừng lại
+        if (speakingMessageIndex === messageIndex) {
+            speechSynthesisRef.current.cancel();
+            setSpeakingMessageIndex(null);
+            return;
+        }
+
+        // Hàm helper để tìm và chọn giọng nói tốt nhất
+        const selectBestVoice = () => {
+            const voices = speechSynthesisRef.current.getVoices();
+            
+            // Ưu tiên 1: Tìm giọng tiếng Việt
+            const vietnameseVoice = voices.find(voice => 
+                voice.lang.toLowerCase().includes('vi') || 
+                voice.lang.toLowerCase().includes('vn') ||
+                voice.name.toLowerCase().includes('vietnamese')
+            );
+            
+            if (vietnameseVoice) {
+                return vietnameseVoice;
+            }
+            
+            // Ưu tiên 2: Tìm giọng nữ (thường tự nhiên hơn cho tiếng Việt)
+            const femaleVoices = voices.filter(voice => 
+                voice.name.toLowerCase().includes('female') || 
+                voice.name.toLowerCase().includes('zira') || 
+                voice.name.toLowerCase().includes('samantha') ||
+                voice.name.toLowerCase().includes('karen') ||
+                voice.name.toLowerCase().includes('susan')
+            );
+            
+            if (femaleVoices.length > 0) {
+                return femaleVoices[0];
+            }
+            
+            // Ưu tiên 3: Chọn giọng đầu tiên có sẵn
+            return voices.length > 0 ? voices[0] : null;
+        };
+
+        // Tạo utterance mới với cấu hình tối ưu cho tiếng Việt
+        const utterance = new SpeechSynthesisUtterance(messageText);
+        utterance.lang = 'vi-VN'; // Tiếng Việt
+        utterance.rate = 0.95; // Tốc độ đọc (hơi chậm một chút để rõ ràng hơn)
+        utterance.pitch = 1.0; // Cao độ (bình thường)
+        utterance.volume = 1; // Âm lượng tối đa
+
+        // Chọn giọng nói tốt nhất
+        const bestVoice = selectBestVoice();
+        if (bestVoice) {
+            utterance.voice = bestVoice;
+        }
+
+        // Xử lý khi bắt đầu phát
+        utterance.onstart = () => {
+            setSpeakingMessageIndex(messageIndex);
+        };
+
+        // Xử lý khi kết thúc hoặc bị dừng
+        utterance.onend = () => {
+            setSpeakingMessageIndex(null);
+        };
+
+        utterance.onerror = (event) => {
+            console.error('Lỗi phát âm:', event);
+            setSpeakingMessageIndex(null);
+            if (event.error === 'not-allowed') {
+                alert('Vui lòng cho phép trình duyệt sử dụng microphone/âm thanh');
+            } else {
+                alert('Có lỗi xảy ra khi phát âm thanh. Vui lòng thử lại.');
+            }
+        };
+
+        // Đảm bảo voices đã được load (một số trình duyệt cần thời gian)
+        let voices = speechSynthesisRef.current.getVoices();
+        if (voices.length === 0) {
+            // Nếu chưa có voices, đợi một chút rồi thử lại
+            const trySpeak = () => {
+                voices = speechSynthesisRef.current.getVoices();
+                if (voices.length > 0) {
+                    const bestVoice = selectBestVoice();
+                    if (bestVoice) {
+                        utterance.voice = bestVoice;
+                    }
+                    speechSynthesisRef.current.speak(utterance);
+                } else {
+                    // Nếu vẫn chưa có, thử lại sau 100ms
+                    setTimeout(trySpeak, 100);
+                }
+            };
+            // Đăng ký sự kiện voiceschanged (chỉ một lần)
+            if (!speechSynthesisRef.current.onvoiceschanged) {
+                speechSynthesisRef.current.onvoiceschanged = trySpeak;
+            }
+            // Cũng thử ngay sau một khoảng thời gian ngắn
+            setTimeout(trySpeak, 100);
+        } else {
+            // Phát âm thanh ngay lập tức
+            speechSynthesisRef.current.speak(utterance);
+        }
+    };
+
+    // Hàm dừng phát âm thanh
+    const stopSpeaking = () => {
+        if (speechSynthesisRef.current) {
+            speechSynthesisRef.current.cancel();
+            setSpeakingMessageIndex(null);
+        }
+    };
+
     return (
         <div
             className="bg-gradient-to-r from-orange-50 to-orange-100 flex flex-col"
@@ -235,6 +386,25 @@ function ChatBot(props) {
                     max-height: 200px;
                     border-radius: 8px;
                     margin-top: 8px;
+                }
+                .speaker-button {
+                    min-width: 32px;
+                    min-height: 32px;
+                    backdrop-filter: blur(4px);
+                }
+                .speaker-button:hover {
+                    transform: scale(1.1);
+                }
+                @keyframes pulse-sound {
+                    0%, 100% {
+                        opacity: 1;
+                    }
+                    50% {
+                        opacity: 0.6;
+                    }
+                }
+                .speaking {
+                    animation: pulse-sound 1.5s ease-in-out infinite;
                 }
             `}
             </style>
@@ -352,7 +522,22 @@ function ChatBot(props) {
                                         />
                                     </div>
                                 </div>
-                                <div className="chat-bubble chat-bubble-gradient-receive break-words">
+                                <div className={`chat-bubble chat-bubble-gradient-receive break-words relative ${isStoryMessage(dataMessages[1][0]) ? 'pr-12' : ''}`}>
+                                    {/* Icon loa cho câu chuyện */}
+                                    {isStoryMessage(dataMessages[1][0]) && (
+                                        <button
+                                            onClick={() => speakStory(dataMessages[1][0], i)}
+                                            className={`absolute top-2 right-2 speaker-button p-2 rounded-full bg-white/30 hover:bg-white/50 transition-all duration-200 flex items-center justify-center shadow-md z-10 ${
+                                                speakingMessageIndex === i ? 'speaking bg-red-100/50' : ''
+                                            }`}
+                                            title={speakingMessageIndex === i ? "Dừng phát" : "Nghe câu chuyện"}
+                                        >
+                                            <FontAwesomeIcon 
+                                                icon={speakingMessageIndex === i ? faVolumeXmark : faVolumeHigh} 
+                                                className={`text-base ${speakingMessageIndex === i ? 'text-red-600' : 'text-blue-700'}`}
+                                            />
+                                        </button>
+                                    )}
                                     <ReactMarkdown>
                                         {dataMessages[1][0]}
                                     </ReactMarkdown>

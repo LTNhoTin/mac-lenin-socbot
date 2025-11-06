@@ -8,9 +8,9 @@ class OpenAIClient:
     def __init__(
         self,
         api_key: str,
-        model_name: str = "gpt-4o-mini",
+        model_name: str = "gpt-4.1-nano",
         response_language: str = "vi",
-        max_output_tokens: int = 150,
+        max_output_tokens: int = 400,
         temperature: float = 0.2,
     ):
         self.client = OpenAI(api_key=api_key)
@@ -25,11 +25,19 @@ class OpenAIClient:
         """Xây dựng prompt theo hai chế độ: có ngữ cảnh (RAG) và không có ngữ cảnh (open-domain)."""
         if contexts and len(contexts) > 0:
             instruction = (
-                f"Bạn là trợ lý AI trả lời bằng tiếng {self.response_language}, giọng tự nhiên và mạch lạc. "
+                f"Bạn là trợ lý tên ViVi, trả lời bằng tiếng {self.response_language}, giọng tự nhiên và mạch lạc. "
                 "Trả lời trực tiếp, rõ ràng và ngắn gọn dựa trên các ngữ cảnh được cung cấp. "
                 "Không phân tích hay suy đoán ngoài ngữ cảnh, không mở đầu bằng các cụm như 'Theo ngữ cảnh được cung cấp'. "
                 "Không nhắc tới 'Context 1/2' hay 'Source: Context X' trong câu trả lời, và không trích nguồn trừ khi người dùng yêu cầu. "
-                "Chỉ dùng bullet khi người dùng yêu cầu; mặc định hãy viết thành một đoạn hoặc vài câu liên kết."
+                "Chỉ dùng bullet khi người dùng yêu cầu; mặc định hãy viết thành một đoạn hoặc vài câu liên kết. "
+                "\n\n**QUY TẮC KỂ CHUYỆN BẮT BUỘC:** "
+                "Khi câu hỏi liên quan đến chủ nghĩa Mác-Lênin, kinh tế chính trị, lịch sử cách mạng, hoặc các chủ đề về xã hội chủ nghĩa, "
+                "BẮT BUỘC phải bắt đầu câu trả lời bằng một câu chuyện ngắn gọn (3-5 câu) về Chủ tịch Hồ Chí Minh hoặc các nhân vật lịch sử cách mạng khác. "
+                "Câu chuyện phải liên quan trực tiếp đến chủ đề của câu hỏi, giúp người đọc hiểu rõ hơn về bối cảnh lịch sử. "
+                "Sau câu chuyện, hãy chuyển sang trả lời câu hỏi một cách tự nhiên. "
+                "Ví dụ: Nếu hỏi về giai cấp công nhân, có thể kể về Bác Hồ khi làm thợ trên tàu, hoặc về quá trình Bác tìm đường cứu nước. "
+                "Nếu hỏi về liên minh giai cấp, có thể kể về cách Bác Hồ xây dựng khối đại đoàn kết dân tộc. "
+                "Hãy làm cho câu chuyện sống động, có cảm xúc và ý nghĩa giáo dục."
             )
             context_texts = []
             for c in contexts:
@@ -41,10 +49,18 @@ class OpenAIClient:
             return f"{instruction}\n\nNgữ cảnh:\n{context_block}\n\nCâu hỏi: {question}"
         else:
             instruction = (
-                f"Bạn là trợ lý AI trả lời bằng tiếng {self.response_language}, giọng thân thiện và ngắn gọn. "
+                f"Bạn là trợ lý tên ViVi, trả lời bằng tiếng {self.response_language}, giọng thân thiện và ngắn gọn. "
                 "Trả lời trực tiếp dựa trên kiến thức chung của bạn. "
                 "Nếu câu hỏi yêu cầu thông tin hoặc trích dẫn từ tài liệu cụ thể, hãy nói rằng hiện không có dữ liệu tài liệu để trích dẫn, nhưng vẫn giải thích ngắn gọn theo hiểu biết chung. "
-                "Không trích nguồn, không mở đầu bằng các cụm như 'Theo ngữ cảnh được cung cấp'."
+                "Không trích nguồn, không mở đầu bằng các cụm như 'Theo ngữ cảnh được cung cấp'. "
+                "\n\n**QUY TẮC KỂ CHUYỆN BẮT BUỘC:** "
+                "Khi câu hỏi liên quan đến chủ nghĩa Mác-Lênin, kinh tế chính trị, lịch sử cách mạng, hoặc các chủ đề về xã hội chủ nghĩa, "
+                "BẮT BUỘC phải bắt đầu câu trả lời bằng một câu chuyện ngắn gọn (3-5 câu) về Chủ tịch Hồ Chí Minh hoặc các nhân vật lịch sử cách mạng khác. "
+                "Câu chuyện phải liên quan trực tiếp đến chủ đề của câu hỏi, giúp người đọc hiểu rõ hơn về bối cảnh lịch sử. "
+                "Sau câu chuyện, hãy chuyển sang trả lời câu hỏi một cách tự nhiên. "
+                "Ví dụ: Nếu hỏi về giai cấp công nhân, có thể kể về Bác Hồ khi làm thợ trên tàu, hoặc về quá trình Bác tìm đường cứu nước. "
+                "Nếu hỏi về liên minh giai cấp, có thể kể về cách Bác Hồ xây dựng khối đại đoàn kết dân tộc. "
+                "Hãy làm cho câu chuyện sống động, có cảm xúc và ý nghĩa giáo dục."
             )
             return f"{instruction}\n\nCâu hỏi: {question}"
 
@@ -165,3 +181,25 @@ class OpenAIClient:
             return f"Lỗi gọi OpenAI /v1/responses: {error_msg}", {"model": self.model_name, "error": error_msg}
         except Exception as e:
             return f"Lỗi xử lý response: {str(e)}", {"model": self.model_name, "error": str(e)}
+    
+    def text_to_speech(self, text: str, voice: str = "nova", model: str = "tts-1") -> bytes:
+        """
+        Chuyển đổi text thành speech sử dụng OpenAI TTS API.
+        
+        Args:
+            text: Văn bản cần chuyển đổi
+            voice: Giọng nói ("alloy", "echo", "fable", "onyx", "nova", "shimmer")
+            model: Model TTS ("tts-1" hoặc "tts-1-hd" - chất lượng cao hơn nhưng chậm hơn)
+        
+        Returns:
+            bytes: Audio data dạng MP3
+        """
+        try:
+            response = self.client.audio.speech.create(
+                model=model,
+                voice=voice,
+                input=text,
+            )
+            return response.content
+        except Exception as e:
+            raise Exception(f"Lỗi tạo TTS: {str(e)}")

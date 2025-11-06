@@ -7,6 +7,7 @@ import re
 import argparse
 import sys
 import subprocess
+import logging
 
 def ensure_dependencies(config: dict | None = None):
     """Đảm bảo các package bắt buộc đã có. Nếu thiếu sẽ tự động cài bằng pip.
@@ -77,7 +78,7 @@ ensure_dependencies(config)
 import uvicorn
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, Response
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from typing import List, Union
@@ -90,6 +91,16 @@ from src.utils.preprocess import preprocess_text
 
 env_path = PROJECT_ROOT / ".env"
 load_dotenv(dotenv_path=env_path)
+
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="MLN131 RAG Chatbot", version="2.0.0")
 
@@ -123,7 +134,7 @@ def startup_event():
     global llm_client
     model_type = os.getenv("MODEL_TYPE", "openai").lower()
     response_language = config.get("response_language", "vi")
-    max_output_tokens = int(config.get("max_output_tokens", 150))
+    max_output_tokens = int(config.get("max_output_tokens", 400))
     temperature = float(config.get("temperature", 0.2))
     
     if model_type == "ollama":
@@ -242,10 +253,17 @@ def _get_bot_config_info() -> str:
 def query(req: QueryRequest):
     start = time.perf_counter()
     
+    logger.info("=" * 80)
+    logger.info(f"📝 NHẬN CÂU HỎI: {req.question}")
+    logger.info(f"🔧 Tham số: top_k={req.top_k}, use_websearch={req.use_websearch}")
+    
     # Kiểm tra nếu câu hỏi về maclenin thì trả về thông tin cấu hình
     if _is_about_maclenin(req.question):
+        logger.info("ℹ️  Câu hỏi về bot config, trả về thông tin cấu hình")
         answer = _get_bot_config_info()
         elapsed_ms = int((time.perf_counter() - start) * 1000)
+        logger.info(f"⏱️  Thời gian xử lý: {elapsed_ms}ms")
+        logger.info("=" * 80)
         return {
             "question": req.question,
             "answer": answer,
@@ -256,14 +274,46 @@ def query(req: QueryRequest):
     
     contexts_for_llm = []
     
+    # RAG Search
+    logger.info("🔍 BẮT ĐẦU RAG SEARCH...")
     results = rag.search(req.question, top_k=req.top_k)
+    logger.info(f"📊 Tìm thấy {len(results)} kết quả từ RAG search")
+    
+    # Log từng kết quả
+    for i, r in enumerate(results, 1):
+        score = r.get("score", 0.0)
+        source = r.get("source", "unknown")
+        text_preview = r.get("text", "")[:100] + "..." if len(r.get("text", "")) > 100 else r.get("text", "")
+        logger.info(f"  [{i}] Score: {score:.4f} | Source: {source}")
+        logger.info(f"      Preview: {text_preview}")
+    
+    # Filter theo similarity threshold
     similarity_threshold = float(config.get("similarity_threshold", 0.6))
+    logger.info(f"🎯 Lọc theo similarity threshold: {similarity_threshold}")
     filtered = [r for r in results if float(r.get("score", 0.0)) >= similarity_threshold]
+    logger.info(f"✅ Sau khi lọc: {len(filtered)} kết quả đạt ngưỡng")
+    
+    # Giới hạn số lượng contexts
     contexts_max = int(config.get("contexts_max", 3))
     contexts_for_llm = filtered[:contexts_max]
+    logger.info(f"📦 Chọn {len(contexts_for_llm)} contexts để gửi đến LLM (max: {contexts_max})")
     
+    # Log contexts được chọn
+    for i, ctx in enumerate(contexts_for_llm, 1):
+        logger.info(f"  Context {i}: Score={ctx.get('score', 0.0):.4f}, Source={ctx.get('source', 'unknown')}")
+        logger.info(f"    Text: {ctx.get('text', '')[:200]}...")
+    
+    # Build prompt và gọi LLM
     model_type = os.getenv("MODEL_TYPE", "openai").lower()
+    logger.info(f"🤖 Gọi LLM: {model_type.upper()}")
+    
     if model_type == "ollama":
+        prompt = llm_client.build_prompt(req.question, contexts_for_llm)
+        logger.info("📄 PROMPT ĐƯỢC XÂY DỰNG:")
+        logger.info("-" * 80)
+        logger.info(prompt[:1000] + "..." if len(prompt) > 1000 else prompt)
+        logger.info("-" * 80)
+        
         answer, meta = llm_client.answer(
             req.question, 
             contexts_for_llm
@@ -272,6 +322,20 @@ def query(req: QueryRequest):
         image_urls = req.image_urls or []
         file_urls = req.file_urls or []
         use_websearch = req.use_websearch or False
+        
+        prompt = llm_client.build_prompt(req.question, contexts_for_llm)
+        logger.info("📄 PROMPT ĐƯỢC XÂY DỰNG:")
+        logger.info("-" * 80)
+        logger.info(prompt[:1000] + "..." if len(prompt) > 1000 else prompt)
+        logger.info("-" * 80)
+        
+        if image_urls:
+            logger.info(f"🖼️  Có {len(image_urls)} ảnh được gửi kèm")
+        if file_urls:
+            logger.info(f"📎 Có {len(file_urls)} file được gửi kèm")
+        if use_websearch:
+            logger.info("🌐 Web search được bật")
+        
         answer, meta = llm_client.answer(
             req.question, 
             contexts_for_llm, 
@@ -279,7 +343,12 @@ def query(req: QueryRequest):
             file_urls=file_urls if file_urls else None,
             use_websearch=use_websearch
         )
+    
     elapsed_ms = int((time.perf_counter() - start) * 1000)
+    logger.info(f"💬 Câu trả lời nhận được (độ dài: {len(answer)} ký tự)")
+    logger.info(f"⏱️  Tổng thời gian xử lý: {elapsed_ms}ms")
+    logger.info("=" * 80)
+    
     return {
         "question": req.question,
         "answer": answer,
@@ -344,10 +413,17 @@ async def query_with_upload(
     """Query với hỗ trợ upload file (text/ảnh)."""
     start = time.perf_counter()
     
+    logger.info("=" * 80)
+    logger.info(f"📝 NHẬN CÂU HỎI VỚI FILE UPLOAD: {question}")
+    logger.info(f"🔧 Tham số: top_k={top_k}, use_websearch={use_websearch}")
+    
     # Kiểm tra nếu câu hỏi về maclenin thì trả về thông tin cấu hình
     if _is_about_maclenin(question):
+        logger.info("ℹ️  Câu hỏi về bot config, trả về thông tin cấu hình")
         answer = _get_bot_config_info()
         elapsed_ms = int((time.perf_counter() - start) * 1000)
+        logger.info(f"⏱️  Thời gian xử lý: {elapsed_ms}ms")
+        logger.info("=" * 80)
         return {
             "question": question,
             "answer": answer,
@@ -360,19 +436,25 @@ async def query_with_upload(
     image_urls = []
     
     if file:
+        logger.info(f"📎 XỬ LÝ FILE: {file.filename} (size: {file.size if hasattr(file, 'size') else 'unknown'} bytes)")
         content = await file.read()
         file_ext = file.filename.split('.')[-1].lower() if file.filename else ''
+        logger.info(f"   Loại file: {file_ext}")
         
         if file_ext in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+            logger.info("   → Đây là file ảnh, encode thành base64")
             # Encode ảnh thành base64 để gửi đến OpenAI API
             import base64
             base64_image = base64.b64encode(content).decode('utf-8')
             mime_type = f"image/{file_ext}" if file_ext != 'jpg' else "image/jpeg"
             image_data_url = f"data:{mime_type};base64,{base64_image}"
             image_urls.append(image_data_url)
+            logger.info(f"   ✅ Đã encode ảnh thành base64 (length: {len(base64_image)} chars)")
         else:
+            logger.info("   → Đây là file text, đọc và chunk")
             try:
                 text_content = content.decode('utf-8')
+                logger.info(f"   Đọc được {len(text_content)} ký tự")
                 processed = preprocess_text(text_content)
                 file_chunks = chunk_text(
                     processed,
@@ -380,26 +462,75 @@ async def query_with_upload(
                     chunk_overlap=int(config.get("chunk_overlap", 120)),
                     source=f"uploaded:{file.filename}"
                 )
+                logger.info(f"   Chunk thành {len(file_chunks)} chunks, chọn {min(2, len(file_chunks))} chunks đầu tiên")
                 contexts_for_llm.extend([{"text": c["text"], "source": c["source"], "score": 1.0} for c in file_chunks[:2]])
+                for i, ctx in enumerate(contexts_for_llm, 1):
+                    logger.info(f"   File Context {i}: {ctx.get('text', '')[:100]}...")
             except Exception as e:
+                logger.error(f"   ❌ Lỗi đọc file: {str(e)}")
                 return JSONResponse(
                     status_code=400,
                     content={"error": f"Không thể đọc file: {str(e)}"}
                 )
+    else:
+        logger.info("   Không có file được upload")
     
+    # RAG Search
+    logger.info("🔍 BẮT ĐẦU RAG SEARCH...")
     results = rag.search(question, top_k=top_k)
+    logger.info(f"📊 Tìm thấy {len(results)} kết quả từ RAG search")
+    
+    # Log từng kết quả
+    for i, r in enumerate(results, 1):
+        score = r.get("score", 0.0)
+        source = r.get("source", "unknown")
+        text_preview = r.get("text", "")[:100] + "..." if len(r.get("text", "")) > 100 else r.get("text", "")
+        logger.info(f"  [{i}] Score: {score:.4f} | Source: {source}")
+        logger.info(f"      Preview: {text_preview}")
+    
+    # Filter theo similarity threshold
     similarity_threshold = float(config.get("similarity_threshold", 0.6))
+    logger.info(f"🎯 Lọc theo similarity threshold: {similarity_threshold}")
     filtered = [r for r in results if float(r.get("score", 0.0)) >= similarity_threshold]
+    logger.info(f"✅ Sau khi lọc: {len(filtered)} kết quả đạt ngưỡng")
+    
+    # Giới hạn số lượng contexts
     contexts_max = int(config.get("contexts_max", 3))
     contexts_for_llm.extend(filtered[:contexts_max])
+    logger.info(f"📦 Tổng cộng {len(contexts_for_llm)} contexts để gửi đến LLM (RAG: {len(filtered[:contexts_max])}, File: {len([c for c in contexts_for_llm if c.get('source', '').startswith('uploaded:')])})")
     
+    # Log contexts được chọn
+    for i, ctx in enumerate(contexts_for_llm, 1):
+        logger.info(f"  Context {i}: Score={ctx.get('score', 0.0):.4f}, Source={ctx.get('source', 'unknown')}")
+        logger.info(f"    Text: {ctx.get('text', '')[:200]}...")
+    
+    # Build prompt và gọi LLM
     model_type = os.getenv("MODEL_TYPE", "openai").lower()
+    logger.info(f"🤖 Gọi LLM: {model_type.upper()}")
+    
     if model_type == "ollama":
+        prompt = llm_client.build_prompt(question, contexts_for_llm)
+        logger.info("📄 PROMPT ĐƯỢC XÂY DỰNG:")
+        logger.info("-" * 80)
+        logger.info(prompt[:1000] + "..." if len(prompt) > 1000 else prompt)
+        logger.info("-" * 80)
+        
         answer, meta = llm_client.answer(
             question, 
             contexts_for_llm
         )
     else:
+        prompt = llm_client.build_prompt(question, contexts_for_llm)
+        logger.info("📄 PROMPT ĐƯỢC XÂY DỰNG:")
+        logger.info("-" * 80)
+        logger.info(prompt[:1000] + "..." if len(prompt) > 1000 else prompt)
+        logger.info("-" * 80)
+        
+        if image_urls:
+            logger.info(f"🖼️  Có {len(image_urls)} ảnh được gửi kèm")
+        if use_websearch:
+            logger.info("🌐 Web search được bật")
+        
         answer, meta = llm_client.answer(
             question, 
             contexts_for_llm, 
@@ -407,7 +538,12 @@ async def query_with_upload(
             file_urls=None,
             use_websearch=use_websearch
         )
+    
     elapsed_ms = int((time.perf_counter() - start) * 1000)
+    logger.info(f"💬 Câu trả lời nhận được (độ dài: {len(answer)} ký tự)")
+    logger.info(f"⏱️  Tổng thời gian xử lý: {elapsed_ms}ms")
+    logger.info("=" * 80)
+    
     return {
         "question": question,
         "answer": answer,
@@ -415,6 +551,114 @@ async def query_with_upload(
         "meta": meta,
         "latency_ms": elapsed_ms
     }
+
+
+class StoryRequest(BaseModel):
+    topic: Optional[str] = None  # Chủ đề câu chuyện (ví dụ: "giai cấp công nhân", "liên minh giai cấp")
+    character: Optional[str] = "Hồ Chí Minh"  # Nhân vật chính (mặc định là Bác Hồ)
+    length: Optional[str] = "medium"  # "short" (3-5 câu), "medium" (5-8 câu), "long" (8-12 câu)
+
+
+@app.post("/story")
+def generate_story(req: StoryRequest):
+    """Tự động tạo một câu chuyện về lịch sử cách mạng."""
+    start = time.perf_counter()
+    
+    logger.info("=" * 80)
+    logger.info(f"📖 YÊU CẦU TẠO CÂU CHUYỆN")
+    logger.info(f"🔧 Tham số: topic={req.topic}, character={req.character}, length={req.length}")
+    
+    # Xây dựng prompt cho việc kể chuyện
+    topic_text = f"về chủ đề '{req.topic}'" if req.topic else "về chủ nghĩa Mác-Lênin, kinh tế chính trị hoặc lịch sử cách mạng"
+    
+    length_instruction = {
+        "short": "3-5 câu",
+        "medium": "5-8 câu", 
+        "long": "8-12 câu"
+    }.get(req.length, "5-8 câu")
+    
+    story_prompt = (
+        f"Bạn là trợ lý tên ViVi. Hãy kể một câu chuyện {length_instruction} "
+        f"về {req.character} {topic_text}. "
+        "Câu chuyện phải sống động, có cảm xúc, mang tính giáo dục và truyền cảm hứng. "
+        "Hãy kể như một người kể chuyện chân thực, không cần mở đầu hay kết thúc trang trọng, "
+        "chỉ cần kể câu chuyện một cách tự nhiên và hấp dẫn."
+    )
+    
+    # Gọi LLM để tạo câu chuyện
+    model_type = os.getenv("MODEL_TYPE", "openai").lower()
+    
+    if model_type == "ollama":
+        answer, meta = llm_client.answer(story_prompt, [])
+    else:
+        answer, meta = llm_client.answer(story_prompt, [])
+    
+    elapsed_ms = int((time.perf_counter() - start) * 1000)
+    logger.info(f"📖 Câu chuyện đã được tạo (độ dài: {len(answer)} ký tự)")
+    logger.info(f"⏱️  Thời gian xử lý: {elapsed_ms}ms")
+    logger.info("=" * 80)
+    
+    return {
+        "story": answer,
+        "topic": req.topic,
+        "character": req.character,
+        "length": req.length,
+        "meta": meta,
+        "latency_ms": elapsed_ms
+    }
+
+
+class TTSRequest(BaseModel):
+    text: str
+    voice: Optional[str] = "nova"  # "alloy", "echo", "fable", "onyx", "nova", "shimmer"
+    model: Optional[str] = "tts-1"  # "tts-1" hoặc "tts-1-hd"
+
+
+@app.post("/tts")
+def text_to_speech(req: TTSRequest):
+    """
+    Chuyển đổi text thành speech sử dụng OpenAI TTS API.
+    Trả về file audio MP3.
+    """
+    try:
+        model_type = os.getenv("MODEL_TYPE", "openai").lower()
+        
+        if model_type != "openai":
+            return JSONResponse(
+                status_code=400,
+                content={"error": "TTS chỉ hỗ trợ khi sử dụng OpenAI model"}
+            )
+        
+        if not isinstance(llm_client, OpenAIClient):
+            return JSONResponse(
+                status_code=400,
+                content={"error": "LLM client không phải OpenAI client"}
+            )
+        
+        # Giới hạn độ dài text để tránh tốn phí
+        max_length = 5000
+        if len(req.text) > max_length:
+            req.text = req.text[:max_length] + "..."
+        
+        audio_data = llm_client.text_to_speech(
+            text=req.text,
+            voice=req.voice,
+            model=req.model
+        )
+        
+        return Response(
+            content=audio_data,
+            media_type="audio/mpeg",
+            headers={
+                "Content-Disposition": "inline; filename=speech.mp3"
+            }
+        )
+    except Exception as e:
+        logger.error(f"Lỗi TTS: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Lỗi tạo TTS: {str(e)}"}
+        )
 
 
 def _set_runtime_env_for_mac():
