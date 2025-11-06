@@ -4,13 +4,14 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faMessage } from '@fortawesome/free-regular-svg-icons';
 import ReactMarkdown from 'react-markdown';
 import robot_img from '../assets/ic5.png';
-import { sendMessageChatService } from './chatbotService';
+import { sendMessageChatService, sendMessageWithFileService } from './chatbotService';
 import LinkBox from './LinkBox'; 
 import commonQuestionsData from '../db/commonQuestions.json'; 
 
 function ChatBot(props) {
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
+    const fileInputRef = useRef(null);
     const [timeOfRequest, setTimeOfRequest] = useState(0);
     const [promptInput, setPromptInput] = useState('');
     const [model, setModel] = useState('LegalBizAI_pro');
@@ -18,6 +19,8 @@ function ChatBot(props) {
     const [isLoading, setIsLoad] = useState(false);
     const [isGen, setIsGen] = useState(false);
     const [counter, setCounter] = useState(0);
+    const [selectedFile, setSelectedFile] = useState(null);
+    const [filePreview, setFilePreview] = useState(null);
     const [dataChat, setDataChat] = useState([
         [
             'start',
@@ -91,16 +94,31 @@ function ChatBot(props) {
 
     const sendMessageChat = async () => {
         if (promptInput !== '' && isLoading === false) {
+            const currentInput = promptInput;
+            const currentFile = selectedFile;
             setTimeOfRequest(0);
             setIsGen(true);
             setPromptInput('');
             inputRef.current.style.height = 'auto';
             setIsLoad(true);
-            setDataChat((prev) => [...prev, ['end', [promptInput, model]]]);
-            setChatHistory((prev) => [promptInput, ...prev]);
+            
+            // 显示用户消息（包含文件预览）
+            let messageDisplay = currentInput;
+            if (currentFile) {
+                messageDisplay += ` [Đã tải lên: ${currentFile.name}]`;
+            }
+            setDataChat((prev) => [...prev, ['end', [messageDisplay, model]]]);
+            setChatHistory((prev) => [currentInput, ...prev]);
 
             try {
-                const result = await sendMessageChatService(promptInput, model);
+                let result;
+                if (currentFile) {
+                    // 如果有文件，使用上传API
+                    result = await sendMessageWithFileService(currentInput, currentFile);
+                } else {
+                    // 否则使用普通API
+                    result = await sendMessageChatService(currentInput, model);
+                }
                 setDataChat((prev) => [
                     ...prev,
                     ['start', [result.result, result.source_documents, result.references, model]],
@@ -114,8 +132,12 @@ function ChatBot(props) {
             } finally {
                 setIsLoad(false);
                 setIsGen(false);
+                setSelectedFile(null);
+                setFilePreview(null);
+                if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                }
                 inputRef.current.focus();
-                
             }
         }
     };
@@ -137,6 +159,31 @@ function ChatBot(props) {
             ]);
             setChatHistory(prev => [selectedQuestion.question, ...prev]);
             scrollToEndChat();
+        }
+    };
+
+    const handleFileSelect = (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            setSelectedFile(file);
+            // 如果是图片，创建预览
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    setFilePreview(reader.result);
+                };
+                reader.readAsDataURL(file);
+            } else {
+                setFilePreview(null);
+            }
+        }
+    };
+
+    const handleRemoveFile = () => {
+        setSelectedFile(null);
+        setFilePreview(null);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
         }
     };
 
@@ -174,6 +221,20 @@ function ChatBot(props) {
                 .textarea-auto-resize {
                     resize: none;
                     overflow: hidden;
+                }
+                .btn-upload {
+                    background-color: #4CAF50 !important; 
+                    border-color: #45a049 !important; 
+                }
+                .btn-upload:hover {
+                    background-color: #45a049 !important; 
+                    border-color: #3d8b40 !important; 
+                }
+                .file-preview {
+                    max-width: 200px;
+                    max-height: 200px;
+                    border-radius: 8px;
+                    margin-top: 8px;
                 }
             `}
             </style>
@@ -344,22 +405,81 @@ function ChatBot(props) {
                     className="grid md:w-[50%] bg-gradient-to-r from-orange-50 to-orange-100 p-1 rounded-t-lg hide-on-small-screen"
                     style={{ zIndex: 10 }}
                 >
-                    <textarea
-                        placeholder="Nhập câu hỏi tại đây..."
-                        className="mr-1 shadow-xl border-2 focus:outline-none px-2 rounded-2xl input-primary col-start-1 md:col-end-12 col-end-11 textarea-auto-resize"
-                        onChange={onChangeHandler}
-                        onKeyDown={handleKeyDown}
-                        disabled={isGen}
-                        value={promptInput}
-                        ref={inputRef}
-                        rows="1"
-                        style={{ resize: 'none', overflow: 'hidden', lineHeight: '3'}}                    
-                    />
+                    {/* 文件预览区域 */}
+                    {selectedFile && (
+                        <div className="col-start-1 col-end-13 mb-2 p-2 bg-white rounded-lg border-2 border-orange-300 flex items-center gap-2">
+                            {filePreview ? (
+                                <img src={filePreview} alt="Xem trước" className="file-preview" />
+                            ) : (
+                                <div className="w-12 h-12 bg-gray-200 rounded flex items-center justify-center">
+                                    <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate">{selectedFile.name}</p>
+                                <p className="text-xs text-gray-500">{(selectedFile.size / 1024).toFixed(2)} KB</p>
+                            </div>
+                            <button
+                                onClick={handleRemoveFile}
+                                className="btn btn-sm btn-circle btn-ghost"
+                                disabled={isGen}
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                    )}
+                    
+                    <div className="col-start-1 col-end-11 md:col-end-10 flex gap-1">
+                        <textarea
+                            placeholder="Nhập câu hỏi tại đây..."
+                            className="flex-1 shadow-xl border-2 focus:outline-none px-2 rounded-2xl input-primary textarea-auto-resize"
+                            onChange={onChangeHandler}
+                            onKeyDown={handleKeyDown}
+                            disabled={isGen}
+                            value={promptInput}
+                            ref={inputRef}
+                            rows="1"
+                            style={{ resize: 'none', overflow: 'hidden', lineHeight: '3'}}                    
+                        />
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={handleFileSelect}
+                            accept="image/*,.pdf,.txt,.doc,.docx"
+                            className="hidden"
+                            id="file-upload"
+                            disabled={isGen}
+                        />
+                        <label
+                            htmlFor="file-upload"
+                            className={`btn btn-square btn-upload ${isGen ? 'btn-disabled' : ''}`}
+                            title="Tải lên ảnh hoặc tệp"
+                        >
+                            <svg
+                                stroke="currentColor"
+                                fill="none"
+                                strokeWidth="2"
+                                viewBox="0 0 24 24"
+                                color="white"
+                                height="18px"
+                                width="18px"
+                                xmlns="http://www.w3.org/2000/svg"
+                            >
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                        </label>
+                    </div>
                     <button
                         disabled={isGen}
                         onClick={sendMessageChat}
                         className={
-                            'drop-shadow-md md:col-start-12 rounded-2xl col-start-11 col-end-12 md:col-end-13 btn btn-active btn-primary btn-square btn-send'
+                            'drop-shadow-md md:col-start-11 md:col-end-13 col-start-11 col-end-13 rounded-2xl btn btn-active btn-primary btn-square btn-send'
                         }
                     >
                         <svg
@@ -376,7 +496,7 @@ function ChatBot(props) {
                             <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
                         </svg>
                     </button>
-                    <p className="text-xs col-start-1 col-end-12 text-justify p-1">
+                    <p className="text-xs col-start-1 col-end-13 text-justify p-1">
                         <b>Lưu ý: </b>LegalBizAI có thể mắc lỗi. Hãy kiểm tra
                         các thông tin quan trọng!
                     </p>

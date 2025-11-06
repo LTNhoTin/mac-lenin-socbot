@@ -428,7 +428,7 @@ def _set_runtime_env_for_mac():
 def _parse_args():
     parser = argparse.ArgumentParser(description="Chạy MLN131 FastAPI server")
     parser.add_argument("--host", default="127.0.0.1", help="Host (mặc định 127.0.0.1)")
-    parser.add_argument("--port", type=int, default=8000, help="Port (mặc định 8000)")
+    parser.add_argument("--port", type=int, default=2000, help="Port (mặc định 2000)")
     parser.add_argument("--reload", action="store_true", help="Bật reload khi phát triển")
     return parser.parse_args()
 
