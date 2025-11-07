@@ -9,7 +9,7 @@ class OllamaClient:
         base_url: str = "http://server.nhotin.space:11434",
         model_name: str = "gpt-oss:20b",
         response_language: str = "vi",
-        max_output_tokens: int = 400,
+        max_output_tokens: int = 150,
         temperature: float = 0.2,
     ):
         if base_url is None:
@@ -32,15 +32,7 @@ class OllamaClient:
                 "Không phân tích hay suy đoán ngoài ngữ cảnh, không mở đầu bằng các cụm như 'Theo ngữ cảnh được cung cấp'. "
                 "Không nhắc tới 'Context 1/2' hay 'Source: Context X' trong câu trả lời, và không trích nguồn trừ khi người dùng yêu cầu. "
                 "Chỉ dùng bullet khi người dùng yêu cầu; mặc định hãy viết thành một đoạn hoặc vài câu liên kết. "
-                "KHÔNG BAO GIỜ tự nhận mình là ChatGPT hay OpenAI. Bạn là Maclenin. "
-                "\n\n**QUY TẮC KỂ CHUYỆN BẮT BUỘC:** "
-                "Khi câu hỏi liên quan đến chủ nghĩa Mác-Lênin, kinh tế chính trị, lịch sử cách mạng, hoặc các chủ đề về xã hội chủ nghĩa, "
-                "BẮT BUỘC phải bắt đầu câu trả lời bằng một câu chuyện ngắn gọn (3-5 câu) về Chủ tịch Hồ Chí Minh hoặc các nhân vật lịch sử cách mạng khác. "
-                "Câu chuyện phải liên quan trực tiếp đến chủ đề của câu hỏi, giúp người đọc hiểu rõ hơn về bối cảnh lịch sử. "
-                "Sau câu chuyện, hãy chuyển sang trả lời câu hỏi một cách tự nhiên. "
-                "Ví dụ: Nếu hỏi về giai cấp công nhân, có thể kể về Bác Hồ khi làm thợ trên tàu, hoặc về quá trình Bác tìm đường cứu nước. "
-                "Nếu hỏi về liên minh giai cấp, có thể kể về cách Bác Hồ xây dựng khối đại đoàn kết dân tộc. "
-                "Hãy làm cho câu chuyện sống động, có cảm xúc và ý nghĩa giáo dục."
+                "KHÔNG BAO GIỜ tự nhận mình là ChatGPT hay OpenAI. Bạn là Maclenin."
             )
             context_texts = []
             for c in contexts:
@@ -57,15 +49,7 @@ class OllamaClient:
                 "Trả lời trực tiếp dựa trên kiến thức chung của bạn. "
                 "Nếu câu hỏi yêu cầu thông tin hoặc trích dẫn từ tài liệu cụ thể, hãy nói rằng hiện không có dữ liệu tài liệu để trích dẫn, nhưng vẫn giải thích ngắn gọn theo hiểu biết chung. "
                 "Không trích nguồn, không mở đầu bằng các cụm như 'Theo ngữ cảnh được cung cấp'. "
-                "KHÔNG BAO GIỜ tự nhận mình là ChatGPT hay OpenAI. Bạn là Maclenin. "
-                "\n\n**QUY TẮC KỂ CHUYỆN BẮT BUỘC:** "
-                "Khi câu hỏi liên quan đến chủ nghĩa Mác-Lênin, kinh tế chính trị, lịch sử cách mạng, hoặc các chủ đề về xã hội chủ nghĩa, "
-                "BẮT BUỘC phải bắt đầu câu trả lời bằng một câu chuyện ngắn gọn (3-5 câu) về Chủ tịch Hồ Chí Minh hoặc các nhân vật lịch sử cách mạng khác. "
-                "Câu chuyện phải liên quan trực tiếp đến chủ đề của câu hỏi, giúp người đọc hiểu rõ hơn về bối cảnh lịch sử. "
-                "Sau câu chuyện, hãy chuyển sang trả lời câu hỏi một cách tự nhiên. "
-                "Ví dụ: Nếu hỏi về giai cấp công nhân, có thể kể về Bác Hồ khi làm thợ trên tàu, hoặc về quá trình Bác tìm đường cứu nước. "
-                "Nếu hỏi về liên minh giai cấp, có thể kể về cách Bác Hồ xây dựng khối đại đoàn kết dân tộc. "
-                "Hãy làm cho câu chuyện sống động, có cảm xúc và ý nghĩa giáo dục."
+                "KHÔNG BAO GIỜ tự nhận mình là ChatGPT hay OpenAI. Bạn là Maclenin."
             )
             return f"{instruction}\n\nCâu hỏi: {question}"
 

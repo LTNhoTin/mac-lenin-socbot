@@ -15,7 +15,7 @@ function HomePage() {
             Xin chào! Mình là
           </h1>
           <h1 className="text-3xl lg:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-orange-400 to-orange-600">
-            LegalBizAI Chat
+            ViVi Chat
           </h1>
           <p className="py-6 font-semibold text-sm lg:text-lg">
             Giúp bạn giải đáp thắc mắc về luật doanh nghiệp, tra cứu thông tin pháp lý một cách nhanh chóng!

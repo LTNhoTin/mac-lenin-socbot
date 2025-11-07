@@ -104,7 +104,7 @@ function NavBar() {
             transform: 'translate3d(0, 0, 0)',
           }}
         >
-          FPTU LegalBot
+          ViVi
         </a>
       </div>
       <div className="navbar-center hidden lg:flex">

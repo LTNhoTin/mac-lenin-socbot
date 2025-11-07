@@ -1,15 +1,15 @@
 const dataFAQs = [
   [
-    "Phạm vi kiến thức của LegalBizAI là gì?",
-    "Phạm vi kiến thức của chatbot tập trung vào Luật Doanh nghiệp 2020, cung cấp thông tin hữu ích về các quy định thành lập, quản lý và vận hành doanh nghiệp tại Việt Nam. Sản phẩm này đặc biệt phù hợp cho các doanh nhân, nhà đầu tư, kế toán, luật sư, chuyên viên pháp chế, sinh viên luật, và bất kỳ ai quan tâm đến lĩnh vực kinh doanh và muốn tìm hiểu về luật doanh nghiệp."
+    "Phạm vi kiến thức của ViVi là gì?",
+    "Phạm vi kiến thức của chatbot tập trung vào MLN131, nội dung của chatbot tập trung làm rõ vai trò của nhà nước pháp quyền Xã hội chủ nghĩa trong việc kiến tạo, quản lý và định hướng các thành phần kinh tế, đặc biệt là kinh tế tư nhân, nhằm phục vụ cho cơ sở hạ tầng là nền kinh tế thị trường định hướng XHCN."
   ],
   [
-    "Cách sử dụng LegalBizAI để tra cứu thông tin",
-    "Để sử dụng LegalBizAI một cách hiệu quả nhất bạn nên đặt câu hỏi một cách rõ ràng đầy đủ để mô hình có thể đưa ra câu trả lời chính xác. Tuy nhiên, ở một số trường hợp câu trả lời có thể không chính xác nên bạn phải kiểm chứng thông tin hoặc liên hệ hỗ trợ nếu cần thiết."
+    "Cách sử dụng ViVi để tra cứu thông tin",
+    "Để sử dụng ViVi một cách hiệu quả nhất bạn nên đặt câu hỏi một cách rõ ràng đầy đủ để mô hình có thể đưa ra câu trả lời chính xác. Tuy nhiên, ở một số trường hợp câu trả lời có thể không chính xác nên bạn phải kiểm chứng thông tin hoặc liên hệ hỗ trợ nếu cần thiết."
   ],
   [
-    "Thông tin từ LegalBizAI có đáng tin cậy không?",
-    "Vì là một mô hình xác suất nên thông tin LegalBizAI đưa ra có thể không chính xác ở một số trường hợp, bạn nên kiểm chứng thông tin hoặc liên hệ hỗ trợ nếu cần thiết."
+    "Thông tin từ ViVi có đáng tin cậy không?",
+    "Vì là một mô hình xác suất nên thông tin ViVi  đưa ra có thể không chính xác ở một số trường hợp, bạn nên kiểm chứng thông tin hoặc liên hệ hỗ trợ nếu cần thiết."
   ],
   [
     "Tôi có thể liên hệ hỗ trợ như thế nào?",
