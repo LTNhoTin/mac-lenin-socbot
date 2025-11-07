@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import ScaleLoader from "react-spinners/ScaleLoader"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import { faMessage, faTrash, faPlus } from "@fortawesome/free-solid-svg-icons"
+import { faMessage, faTrash, faPlus, faImage, faTimes, faDatabase, faGlobe } from "@fortawesome/free-solid-svg-icons"
 import ReactMarkdown from "react-markdown"
 import robot_img from "../assets/ic5.png"
 import { sendMessageChatService } from "./chatbotService"
@@ -13,14 +13,123 @@ import commonQuestionsData from "../db/commonQuestions.json"
 function ChatBot(props) {
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
+  const fileInputRef = useRef(null)
   const [timeOfRequest, setTimeOfRequest] = useState(0)
   const [promptInput, setPromptInput] = useState("")
-  const [model, setModel] = useState("LegalBizAI_pro")
+  const [model, setModel] = useState("ViVi_pro")
   const [isLoading, setIsLoad] = useState(false)
   const [isGen, setIsGen] = useState(false)
   const [counter, setCounter] = useState(0)
+  const [selectedImage, setSelectedImage] = useState(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const [lightboxImage, setLightboxImage] = useState(null)
+  const [useWebsearch, setUseWebsearch] = useState(false)
 
-  const [chats, setChats] = useState({
+  // Hàm load chats từ localStorage
+  const loadChatsFromCache = () => {
+    try {
+      const cachedChats = localStorage.getItem("vivi_chat_history")
+      const cachedCurrentChatId = localStorage.getItem("vivi_current_chat_id")
+      
+      if (cachedChats) {
+        const parsedChats = JSON.parse(cachedChats)
+        // Convert createdAt từ string về Date object
+        Object.keys(parsedChats).forEach((chatId) => {
+          if (parsedChats[chatId].createdAt) {
+            parsedChats[chatId].createdAt = new Date(parsedChats[chatId].createdAt)
+          }
+        })
+        return { chats: parsedChats, currentChatId: cachedCurrentChatId || "default" }
+      }
+    } catch (error) {
+      console.error("Lỗi khi load cache:", error)
+    }
+    return null
+  }
+
+  // Giới hạn số lượng chat được lưu (giữ 20 chat gần nhất)
+  const MAX_CACHED_CHATS = 20
+
+  // Hàm tự động xóa chat cũ khi vượt quá giới hạn
+  const trimOldChats = useCallback((chatsToTrim) => {
+    const chatEntries = Object.entries(chatsToTrim)
+    if (chatEntries.length <= MAX_CACHED_CHATS) {
+      return chatsToTrim
+    }
+    
+    // Sắp xếp theo thời gian tạo (mới nhất trước)
+    chatEntries.sort((a, b) => {
+      const dateA = a[1].createdAt instanceof Date ? a[1].createdAt : new Date(a[1].createdAt)
+      const dateB = b[1].createdAt instanceof Date ? b[1].createdAt : new Date(b[1].createdAt)
+      return dateB - dateA
+    })
+    
+    // Giữ lại MAX_CACHED_CHATS chat gần nhất
+    const trimmedEntries = chatEntries.slice(0, MAX_CACHED_CHATS)
+    return Object.fromEntries(trimmedEntries)
+  }, [])
+
+  // Hàm lưu chats vào localStorage
+  const saveChatsToCache = useCallback((chatsToSave, chatId) => {
+    try {
+      // Tự động xóa chat cũ nếu vượt quá giới hạn
+      let chatsToStore = trimOldChats(chatsToSave)
+      
+      // Convert Date objects thành ISO strings để lưu
+      chatsToStore = JSON.parse(JSON.stringify(chatsToStore))
+      Object.keys(chatsToStore).forEach((id) => {
+        if (chatsToStore[id].createdAt instanceof Date) {
+          chatsToStore[id].createdAt = chatsToStore[id].createdAt.toISOString()
+        }
+      })
+      localStorage.setItem("vivi_chat_history", JSON.stringify(chatsToStore))
+      if (chatId) {
+        localStorage.setItem("vivi_current_chat_id", chatId)
+      }
+    } catch (error) {
+      console.error("Lỗi khi lưu cache:", error)
+      // Nếu lỗi do localStorage đầy, thử xóa một số chat cũ
+      if (error.name === "QuotaExceededError") {
+        try {
+          // Thử xóa một nửa số chat cũ
+          const chatEntries = Object.entries(chatsToSave)
+          chatEntries.sort((a, b) => {
+            const dateA = a[1].createdAt instanceof Date ? a[1].createdAt : new Date(a[1].createdAt)
+            const dateB = b[1].createdAt instanceof Date ? b[1].createdAt : new Date(b[1].createdAt)
+            return dateB - dateA
+          })
+          const keepCount = Math.max(1, Math.floor(chatEntries.length / 2))
+          const trimmedChats = Object.fromEntries(chatEntries.slice(0, keepCount))
+          
+          // Cập nhật state và thử lưu lại
+          setChats(trimmedChats)
+          const trimmedToStore = JSON.parse(JSON.stringify(trimmedChats))
+          Object.keys(trimmedToStore).forEach((id) => {
+            if (trimmedToStore[id].createdAt instanceof Date) {
+              trimmedToStore[id].createdAt = trimmedToStore[id].createdAt.toISOString()
+            }
+          })
+          localStorage.setItem("vivi_chat_history", JSON.stringify(trimmedToStore))
+          alert(`Bộ nhớ cache đầy. Đã tự động xóa một số cuộc trò chuyện cũ. Còn lại ${keepCount} cuộc trò chuyện.`)
+        } catch (retryError) {
+          // Nếu vẫn lỗi, xóa toàn bộ cache
+          try {
+            localStorage.removeItem("vivi_chat_history")
+            localStorage.removeItem("vivi_current_chat_id")
+            setChats(defaultChats)
+            setCurrentChatId("default")
+            alert("Bộ nhớ cache đầy. Đã xóa toàn bộ lịch sử trò chuyện.")
+          } catch (finalError) {
+            console.error("Lỗi khi xóa cache:", finalError)
+            alert("Bộ nhớ cache đầy và không thể xóa tự động. Vui lòng xóa thủ công qua nút Clear Cache.")
+          }
+        }
+      }
+    }
+  }, [trimOldChats])
+
+  // Load từ cache khi component mount (lazy initialization)
+  const defaultChats = {
     default: {
       id: "default",
       title: "Cuộc trò chuyện mới",
@@ -29,28 +138,47 @@ function ChatBot(props) {
         [
           "start",
           [
-            "Xin chào! Đây là ViVi, trợ lý đắc lực về luật doanh nghiệp của bạn! Bạn muốn tìm kiếm thông tin về điều gì? Đừng quên chọn mô hình phù hợp để mình có thể giúp bạn tìm kiếm thông tin chính xác nhất nha.",
+            "Xin chào! Đây là ViVi, trợ lý đắc lực về MLN của bạn! Bạn muốn tìm kiếm thông tin về điều gì?",
             null,
             null,
           ],
         ],
       ],
     },
+  }
+
+  // Tối ưu: chỉ load cache một lần
+  const [chats, setChats] = useState(() => {
+    const cachedData = loadChatsFromCache()
+    return cachedData?.chats || defaultChats
   })
-  const [currentChatId, setCurrentChatId] = useState("default")
+  const [currentChatId, setCurrentChatId] = useState(() => {
+    // Load lại từ localStorage để lấy currentChatId (đã được cache trong memory)
+    try {
+      const cachedCurrentChatId = localStorage.getItem("vivi_current_chat_id")
+      return cachedCurrentChatId || "default"
+    } catch {
+      return "default"
+    }
+  })
 
   const models = [
     {
-      value: "LegalBizAI_pro",
-      name: "LegalBizAI Pro",
+      value: "ViVi_pro",
+      name: "ViVi Pro",
     },
     {
-      value: "LegalBizAI",
-      name: "LegalBizAI",
+      value: "ViVi",
+      name: "ViVi",
     },
   ]
 
   const commonQuestions = commonQuestionsData
+
+  // Lưu cache mỗi khi chats hoặc currentChatId thay đổi
+  useEffect(() => {
+    saveChatsToCache(chats, currentChatId)
+  }, [chats, currentChatId, saveChatsToCache])
 
   useEffect(() => {
     scrollToEndChat()
@@ -99,11 +227,13 @@ function ChatBot(props) {
   }
 
   const sendMessageChat = async () => {
-    if (promptInput !== "" && isLoading === false) {
+    if ((promptInput !== "" || selectedImage) && isLoading === false) {
       setTimeOfRequest(0)
       setIsGen(true)
-      const userMessage = promptInput
+      const userMessage = promptInput || (selectedImage ? "Phân tích ảnh này" : "")
+      const imageToSend = selectedImage
       setPromptInput("")
+      setSelectedImage(null)
       inputRef.current.style.height = "auto"
       setIsLoad(true)
 
@@ -111,12 +241,12 @@ function ChatBot(props) {
         ...prev,
         [currentChatId]: {
           ...prev[currentChatId],
-          messages: [...prev[currentChatId].messages, ["end", [userMessage, model]]],
+          messages: [...prev[currentChatId].messages, ["end", [userMessage, model, imageToSend]]],
         },
       }))
 
       try {
-        const result = await sendMessageChatService(userMessage, model)
+        const result = await sendMessageChatService(userMessage, model, imageToSend, useWebsearch)
 
         const currentChat = chats[currentChatId]
         let newTitle = currentChat.title
@@ -159,6 +289,78 @@ function ChatBot(props) {
     }
   }
 
+  const handleImageSelect = (file) => {
+    if (file && file.type.startsWith("image/")) {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        setSelectedImage(e.target.result)
+      }
+      reader.readAsDataURL(file)
+    } else {
+      alert("Vui lòng chọn file ảnh hợp lệ (jpg, png, gif, webp)")
+    }
+  }
+
+  const handlePaste = (e) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      if (item.type.startsWith("image/")) {
+        e.preventDefault()
+        const file = item.getAsFile()
+        if (file) {
+          handleImageSelect(file)
+        }
+        break
+      }
+    }
+  }
+
+  const handleFileInputChange = (e) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      handleImageSelect(file)
+    }
+  }
+
+  const handleDragOver = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    // Chỉ set dragging nếu có file ảnh
+    if (e.dataTransfer?.types?.includes("Files")) {
+      setIsDragging(true)
+    }
+  }
+
+  const handleDragLeave = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    // Chỉ set false nếu rời khỏi container, không phải vào child element
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setIsDragging(false)
+    }
+  }
+
+  const handleDrop = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+
+    const file = e.dataTransfer.files?.[0]
+    if (file) {
+      handleImageSelect(file)
+    }
+  }
+
+  const removeImage = () => {
+    setSelectedImage(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+  }
+
   const handleQuickQuestionClick = (question) => {
     const selectedQuestion = commonQuestions.find((q) => q.question === question)
     if (selectedQuestion) {
@@ -190,7 +392,7 @@ function ChatBot(props) {
           [
             "start",
             [
-              "Xin chào! Đây là ViVi, trợ lý đắc lực về luật doanh nghiệp của bạn! Bạn muốn tìm kiếm thông tin về điều gì?",
+              "Xin chào! Đây là ViVi, trợ lý đắc lực về MLN của bạn! Bạn muốn tìm kiếm thông tin về điều gì?",
               null,
               null,
             ],
@@ -200,6 +402,11 @@ function ChatBot(props) {
     }))
     setCurrentChatId(newChatId)
     setPromptInput("")
+    setSelectedImage(null)
+    setUseWebsearch(false)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
     inputRef.current.style.height = "auto"
   }
 
@@ -219,9 +426,31 @@ function ChatBot(props) {
     }
   }
 
+  // Hàm xóa toàn bộ cache
+  const clearAllCache = () => {
+    if (window.confirm("Bạn có chắc chắn muốn xóa toàn bộ lịch sử trò chuyện? Hành động này không thể hoàn tác.")) {
+      try {
+        localStorage.removeItem("vivi_chat_history")
+        localStorage.removeItem("vivi_current_chat_id")
+        // Reset về chat mặc định
+        setChats(defaultChats)
+        setCurrentChatId("default")
+        alert("Đã xóa toàn bộ lịch sử trò chuyện.")
+      } catch (error) {
+        console.error("Lỗi khi xóa cache:", error)
+        alert("Có lỗi xảy ra khi xóa cache.")
+      }
+    }
+  }
+
   const switchChat = (chatId) => {
     setCurrentChatId(chatId)
     setPromptInput("")
+    setSelectedImage(null)
+    setUseWebsearch(false)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
     inputRef.current.style.height = "auto"
   }
 
@@ -229,14 +458,7 @@ function ChatBot(props) {
   const dataChat = currentChat?.messages || []
 
   return (
-    <div className="bg-gradient-to-r from-orange-50 to-orange-100 flex flex-col w-full h-screen">
-      <div className="bg-gradient-to-r from-orange-100 to-orange-50 border-b-2 border-orange-200 py-4 px-6 shadow-sm">
-        <h1 className="text-2xl md:text-3xl font-bold bg-[linear-gradient(90deg,hsl(var(--s))_0%,hsl(var(--sf))_9%,hsl(var(--pf))_42%,hsl(var(--p))_47%,hsl(var(--a))_100%)] bg-clip-text will-change-auto [-webkit-text-fill-color:transparent] [transform:translate3d(0,0,0)] motion-reduce:!tracking-normal">
-          ViVi Chat
-        </h1>
-        <p className="text-sm text-gray-600 mt-1">Hỏi bất cứ điều gì về luật kinh doanh</p>
-      </div>
-
+    <div className="bg-gradient-to-r from-orange-50 to-orange-100 flex flex-col w-full h-full overflow-hidden">
       <style>
         {`
                 .chat-bubble-gradient-receive {
@@ -274,7 +496,7 @@ function ChatBot(props) {
             `}
       </style>
 
-      <div className="lg:hidden p-2 flex justify-center bg-gradient-to-r from-orange-50 to-orange-100">
+      <div className="lg:hidden p-2 flex justify-center bg-gradient-to-r from-orange-50 to-orange-100 flex-shrink-0">
         <select
           value={model}
           onChange={(e) => setModel(e.target.value)}
@@ -288,20 +510,20 @@ function ChatBot(props) {
         </select>
       </div>
 
-      <div className="flex flex-1 gap-3 p-3 overflow-hidden">
-        <div className="hidden lg:flex flex-col w-64 bg-gray-50 rounded-2xl p-3 shadow-md border border-gray-200 overflow-hidden">
-          <h2 className="font-bold mb-3 text-sm bg-[linear-gradient(90deg,hsl(var(--s))_0%,hsl(var(--sf))_9%,hsl(var(--pf))_42%,hsl(var(--p))_47%,hsl(var(--a))_100%)] bg-clip-text will-change-auto [-webkit-text-fill-color:transparent]">
+      <div className="flex flex-1 gap-3 p-3 overflow-hidden min-h-0">
+        <div className="hidden lg:flex flex-col w-64 bg-gray-50 rounded-2xl p-3 shadow-md border border-gray-200 overflow-hidden min-w-0">
+          <h2 className="font-bold mb-3 text-sm bg-[linear-gradient(90deg,hsl(var(--s))_0%,hsl(var(--sf))_9%,hsl(var(--pf))_42%,hsl(var(--p))_47%,hsl(var(--a))_100%)] bg-clip-text will-change-auto [-webkit-text-fill-color:transparent] flex-shrink-0">
             Những câu hỏi phổ biến
           </h2>
-          <ul className="menu text-xs space-y-2 overflow-y-auto flex-1 pr-2">
+          <ul className="menu text-xs space-y-2 overflow-y-auto overflow-x-hidden flex-1 pr-2 min-w-0">
             {commonQuestions.map((mess, i) => (
-              <li key={i} className="hover:bg-orange-100 rounded-lg p-2 cursor-pointer transition">
+              <li key={i} className="hover:bg-orange-100 rounded-lg p-2 cursor-pointer transition min-w-0">
                 <button
                   onClick={() => handleQuickQuestionClick(mess.question)}
-                  className="text-left text-gray-700 hover:text-gray-900 break-words"
+                  className="text-left text-gray-700 hover:text-gray-900 break-words w-full min-w-0"
                 >
-                  <FontAwesomeIcon icon={faMessage} className="mr-2" />
-                  {mess.question}
+                  <FontAwesomeIcon icon={faMessage} className="mr-2 flex-shrink-0" />
+                  <span className="break-words">{mess.question}</span>
                 </button>
               </li>
             ))}
@@ -315,21 +537,21 @@ function ChatBot(props) {
             text-xs lg:text-sm 
             scrollbar-thin scrollbar-thumb-gray-300 bg-white  
             scrollbar-thumb-rounded-full scrollbar-track-rounded-full
-            rounded-3xl border-2 p-3 overflow-auto flex-1"
+            rounded-3xl border-2 border-orange-200 p-4 lg:p-6 overflow-auto flex-1 shadow-inner"
           >
             {dataChat.map((dataMessages, i) =>
               dataMessages[0] === "start" ? (
                 <div className="chat chat-start drop-shadow-md" key={i}>
                   <div className="chat-image avatar">
-                    <div className="w-8 lg:w-10 rounded-full border-2 border-blue-500">
+                    <div className="w-8 lg:w-10 rounded-full border-2 border-blue-500 shadow-md">
                       <img className="scale-150" src={robot_img || "/placeholder.svg"} alt="avatar" />
                     </div>
                   </div>
-                  <div className="chat-bubble chat-bubble-gradient-receive break-words">
-                    <ReactMarkdown>{dataMessages[1][0]}</ReactMarkdown>
+                  <div className="chat-bubble chat-bubble-gradient-receive break-words max-w-[85%] lg:max-w-[70%] shadow-lg">
+                    <ReactMarkdown className="prose prose-sm max-w-none">{dataMessages[1][0]}</ReactMarkdown>
                     {dataMessages[1][1] && dataMessages[1][1].length > 0 && (
                       <>
-                        <div className="divider m-0"></div>
+                        <div className="divider m-0 my-2 opacity-50"></div>
                         <LinkBox links={dataMessages[1][1]} />
                       </>
                     )}
@@ -337,13 +559,27 @@ function ChatBot(props) {
                 </div>
               ) : (
                 <div className="chat chat-end" key={i}>
-                  <div className="chat-bubble shadow-xl chat-bubble-gradient-send">
-                    {dataMessages[1][0]}
-
-                    <>
-                      <div className="divider m-0"></div>
-                      {/* <p className="font-light text-xs text-cyan-50">Mô hình: {dataMessages[1][1]}</p> */}
-                    </>
+                  <div className="chat-bubble shadow-xl chat-bubble-gradient-send max-w-[85%] lg:max-w-[70%]">
+                    {dataMessages[1][2] && (
+                      <div className="mb-3 -mx-2 -mt-2 first:mt-0">
+                        <div className="relative group cursor-pointer overflow-hidden rounded-xl border-2 border-white/40 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] bg-gray-100 flex items-center justify-center">
+                          <img
+                            src={dataMessages[1][2]}
+                            alt="Uploaded"
+                            onClick={() => setLightboxImage(dataMessages[1][2])}
+                            className="w-full max-w-md max-h-64 lg:max-h-80 object-contain transition-transform duration-300 group-hover:scale-105"
+                          />
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300 flex items-center justify-center">
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-white/90 rounded-full p-2 shadow-lg">
+                              <FontAwesomeIcon icon={faImage} className="text-blue-600 text-lg" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {dataMessages[1][0] && (
+                      <div className="whitespace-pre-wrap break-words">{dataMessages[1][0]}</div>
+                    )}
                   </div>
                 </div>
               ),
@@ -366,39 +602,125 @@ function ChatBot(props) {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="grid bg-gradient-to-r from-orange-50 to-orange-100 p-2 rounded-lg gap-2 mt-2">
-            <textarea
-              placeholder="Nhập câu hỏi tại đây..."
-              className="shadow-xl border-2 focus:outline-none px-2 rounded-2xl input-primary col-span-full md:col-span-11 textarea-auto-resize"
-              onChange={onChangeHandler}
-              onKeyDown={handleKeyDown}
-              disabled={isGen}
-              value={promptInput}
-              ref={inputRef}
-              rows="1"
-              style={{ resize: "none", overflow: "hidden", lineHeight: "3" }}
-            />
-            <button
-              disabled={isGen}
-              onClick={sendMessageChat}
-              className="drop-shadow-md rounded-2xl col-span-1 md:col-span-1 btn btn-active btn-primary btn-square btn-send"
-            >
-              <svg
-                stroke="currentColor"
-                fill="none"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-                color="white"
-                height="15px"
-                width="15px"
-                xmlns="http://www.w3.org/2000/svg"
+          <div
+            className={`bg-gradient-to-r from-orange-50 to-orange-100 p-4 rounded-2xl gap-3 mt-3 flex-shrink-0 transition-all border-2 ${
+              isDragging ? "border-orange-400 ring-4 ring-orange-200 ring-offset-2 bg-orange-100" : "border-orange-200"
+            }`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            {selectedImage && (
+              <div className="mb-3 p-3 bg-white rounded-xl shadow-lg border-2 border-orange-200">
+                <div className="flex items-start gap-3">
+                  <div className="relative flex-shrink-0 group bg-gray-100 rounded-lg border-2 border-orange-300 shadow-md overflow-hidden">
+                    <img
+                      src={selectedImage}
+                      alt="Preview"
+                      onClick={() => setLightboxImage(selectedImage)}
+                      className="w-24 h-24 lg:w-32 lg:h-32 object-contain cursor-pointer hover:scale-105 transition-transform duration-200"
+                    />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-lg transition-colors duration-200 flex items-center justify-center">
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 rounded-full p-1.5">
+                        <FontAwesomeIcon icon={faImage} className="text-orange-600 text-sm" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-gray-700 mb-1">Ảnh đã chọn</p>
+                    <p className="text-xs text-gray-500 mb-2">Nhấn vào ảnh để xem kích thước đầy đủ</p>
+                    <button
+                      onClick={removeImage}
+                      className="btn btn-xs btn-error text-white hover:bg-red-600 transition"
+                    >
+                      <FontAwesomeIcon icon={faTimes} className="mr-1" />
+                      Xóa ảnh
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div className="flex gap-2 items-end">
+              <div className="flex-1 flex gap-2 items-end">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileInputChange}
+                  accept="image/*"
+                  className="hidden"
+                  id="image-upload"
+                />
+                <label
+                  htmlFor="image-upload"
+                  className="btn btn-square btn-outline btn-primary border-orange-400 hover:bg-orange-100 hover:border-orange-500 flex-shrink-0 cursor-pointer transition-all shadow-md hover:shadow-lg h-11 w-11"
+                  title="Tải ảnh"
+                >
+                  <FontAwesomeIcon icon={faImage} className="text-orange-600 text-lg" />
+                </label>
+                <button
+                  onClick={() => setUseWebsearch(!useWebsearch)}
+                  className={`btn btn-square btn-outline flex-shrink-0 cursor-pointer transition-all shadow-md hover:shadow-lg h-11 w-11 ${
+                    useWebsearch
+                      ? "bg-orange-500 border-orange-600 text-white hover:bg-orange-600"
+                      : "border-orange-400 hover:bg-orange-100 hover:border-orange-500"
+                  }`}
+                  title={useWebsearch ? "Tắt Web Search (GPT-4.1 nano)" : "Bật Web Search (GPT-4.1 nano)"}
+                >
+                  <FontAwesomeIcon icon={faGlobe} className={`text-lg ${useWebsearch ? "text-white" : "text-orange-600"}`} />
+                </button>
+                <textarea
+                  placeholder="Nhập câu hỏi tại đây..."
+                  className="flex-1 shadow-lg border-2 focus:outline-none px-4 py-3 rounded-xl input-primary textarea-auto-resize min-h-[44px] bg-white focus:bg-orange-50/50 transition-colors"
+                  onChange={onChangeHandler}
+                  onKeyDown={handleKeyDown}
+                  onPaste={handlePaste}
+                  onDragOver={(e) => {
+                    // Cho phép drag vào textarea
+                    if (e.dataTransfer?.types?.includes("Files")) {
+                      e.preventDefault()
+                      e.stopPropagation()
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    const file = e.dataTransfer.files?.[0]
+                    if (file) {
+                      handleImageSelect(file)
+                    }
+                  }}
+                  disabled={isGen}
+                  value={promptInput}
+                  ref={inputRef}
+                  rows="1"
+                  style={{ resize: "none", overflow: "hidden", lineHeight: "1.5" }}
+                />
+              </div>
+              <button
+                disabled={isGen || (!promptInput && !selectedImage)}
+                onClick={sendMessageChat}
+                className="drop-shadow-lg rounded-xl btn btn-active btn-primary btn-square btn-send flex-shrink-0 disabled:opacity-50 h-11 w-11 transition-all hover:scale-105 active:scale-95"
+                title="Gửi tin nhắn"
               >
-                <line x1="22" y1="2" x2="11" y2="13"></line>
-                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-              </svg>
-            </button>
-            <p className="text-xs col-span-full text-justify">
-              <b>Lưu ý: </b>ViVi có thể mắc lỗi. Hãy kiểm tra các thông tin quan trọng!
+                <svg
+                  stroke="currentColor"
+                  fill="none"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                  color="white"
+                  height="20px"
+                  width="20px"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </button>
+            </div>
+            <p className="text-xs mt-3 text-justify text-gray-600">
+              <b>Lưu ý: </b>ViVi có thể mắc lỗi. Hãy kiểm tra các thông tin quan trọng! {isDragging && (
+                <span className="text-orange-600 font-semibold animate-pulse"> - Thả ảnh vào đây để tải lên</span>
+              )}
             </p>
           </div>
         </div>
@@ -408,13 +730,22 @@ function ChatBot(props) {
             <h2 className="font-bold text-sm bg-[linear-gradient(90deg,hsl(var(--s))_0%,hsl(var(--sf))_9%,hsl(var(--pf))_42%,hsl(var(--p))_47%,hsl(var(--a))_100%)] bg-clip-text will-change-auto [-webkit-text-fill-color:transparent]">
               Lịch sử trò chuyện
             </h2>
-            <button
-              onClick={createNewChat}
-              className="text-orange-600 hover:text-orange-700 transition"
-              title="Tạo cuộc trò chuyện mới"
-            >
-              <FontAwesomeIcon icon={faPlus} size="sm" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={clearAllCache}
+                className="text-red-500 hover:text-red-700 transition"
+                title="Xóa toàn bộ lịch sử trò chuyện"
+              >
+                <FontAwesomeIcon icon={faDatabase} size="sm" />
+              </button>
+              <button
+                onClick={createNewChat}
+                className="text-orange-600 hover:text-orange-700 transition"
+                title="Tạo cuộc trò chuyện mới"
+              >
+                <FontAwesomeIcon icon={faPlus} size="sm" />
+              </button>
+            </div>
           </div>
           <ul className="menu text-xs space-y-1 overflow-y-auto flex-1 pr-2">
             {Object.entries(chats).length === 0 ? (
@@ -425,23 +756,26 @@ function ChatBot(props) {
                 .map(([chatId, chat]) => (
                   <li
                     key={chatId}
-                    className={`rounded-lg p-2 transition flex items-center justify-between group ${
+                    className={`rounded-lg p-2 transition relative group ${
                       currentChatId === chatId ? "chat-item-active" : "hover:bg-orange-100"
                     }`}
                   >
                     <button
                       onClick={() => switchChat(chatId)}
-                      className="text-left text-gray-700 hover:text-gray-900 break-words flex-1"
+                      className="text-left text-gray-700 hover:text-gray-900 break-words w-full pr-6"
                     >
                       <FontAwesomeIcon icon={faMessage} className="mr-2" />
                       {chat.title}
                     </button>
                     <button
-                      onClick={() => deleteChat(chatId)}
-                      className="text-gray-400 hover:text-red-500 transition opacity-0 group-hover:opacity-100 ml-2"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        deleteChat(chatId)
+                      }}
+                      className="absolute top-1 right-1 text-gray-400 hover:text-red-600 hover:bg-red-50 active:bg-red-100 transition rounded-full p-1 w-6 h-6 flex items-center justify-center"
                       title="Xóa cuộc trò chuyện"
                     >
-                      <FontAwesomeIcon icon={faTrash} size="sm" />
+                      <FontAwesomeIcon icon={faTrash} size="xs" />
                     </button>
                   </li>
                 ))
@@ -449,6 +783,30 @@ function ChatBot(props) {
           </ul>
         </div>
       </div>
+
+      {/* Lightbox Modal */}
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div className="relative max-w-7xl max-h-[90vh] w-full h-full flex items-center justify-center">
+            <img
+              src={lightboxImage}
+              alt="Full size"
+              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button
+              onClick={() => setLightboxImage(null)}
+              className="absolute top-4 right-4 bg-white/90 hover:bg-white text-gray-800 rounded-full w-10 h-10 flex items-center justify-center shadow-lg transition-all hover:scale-110"
+              title="Đóng"
+            >
+              <FontAwesomeIcon icon={faTimes} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

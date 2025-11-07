@@ -1,4 +1,4 @@
-# LegalBizAI_UI
+# ViVi_UI
 
 ## Giới thiệu
 AI Tool là một ứng dụng React cho phép người dùng tương tác với chatbot hỏi đáp về luật doanh nghiệp.

@@ -7,7 +7,7 @@ import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <BrowserRouter basename="/LegalbizAi_chatbot">
+    <BrowserRouter basename="/vivi_chatbot">
       <App />
     </BrowserRouter>
   </React.StrictMode>,

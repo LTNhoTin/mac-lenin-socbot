@@ -75,12 +75,15 @@ config = load_config()
 ensure_dependencies(config)
 
 import uvicorn
+import logging
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from typing import List, Union
+
+logger = logging.getLogger(__name__)
 
 from src.rag_service import RagService
 from src.clients.openai_client import OpenAIClient
@@ -103,7 +106,8 @@ app.add_middleware(
 )
 
 rag: RagService = RagService(config)
-llm_client: Union[OpenAIClient, OllamaClient, None] = None
+ollama_client: Optional[OllamaClient] = None
+openai_client: Optional[OpenAIClient] = None
 
 
 class QueryRequest(BaseModel):
@@ -120,34 +124,36 @@ class RebuildRequest(BaseModel):
 
 @app.on_event("startup")
 def startup_event():
-    global llm_client
-    model_type = os.getenv("MODEL_TYPE", "openai").lower()
+    global ollama_client, openai_client
     response_language = config.get("response_language", "vi")
     max_output_tokens = int(config.get("max_output_tokens", 150))
     temperature = float(config.get("temperature", 0.2))
     
-    if model_type == "ollama":
-        base_url = os.getenv("OLLAMA_BASE_URL", "http://server.nhotin.space:11434")
-        model_name = os.getenv("OLLAMA_MODEL_NAME", "gpt-oss:20b")
-        llm_client = OllamaClient(
-            base_url=base_url,
-            model_name=model_name,
-            response_language=response_language,
-            max_output_tokens=max_output_tokens,
-            temperature=temperature,
-        )
-    else:
-        api_key = os.getenv("OPENAI_API_KEY", "")
-        model_name = os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini")
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY không được tìm thấy trong environment variables")
-        llm_client = OpenAIClient(
-            api_key=api_key,
-            model_name=model_name,
-            response_language=response_language,
-            max_output_tokens=max_output_tokens,
-            temperature=temperature,
-        )
+    # Khởi tạo Ollama client (cho câu hỏi text và vision)
+    base_url = os.getenv("OLLAMA_BASE_URL", "http://server.nhotin.space:11434")
+    ollama_model_name = os.getenv("OLLAMA_MODEL_NAME", "gpt-oss:20b")
+    vision_model_name = os.getenv("OLLAMA_VISION_MODEL_NAME", "gemma3:latest")
+    ollama_client = OllamaClient(
+        base_url=base_url,
+        model_name=ollama_model_name,
+        vision_model_name=vision_model_name,
+        response_language=response_language,
+        max_output_tokens=max_output_tokens,
+        temperature=temperature,
+    )
+    
+    # Khởi tạo OpenAI client (cho câu hỏi có ảnh)
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    openai_model_name = os.getenv("OPENAI_MODEL_NAME", "gpt-4.1-nano")
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY không được tìm thấy trong environment variables")
+    openai_client = OpenAIClient(
+        api_key=api_key,
+        model_name=openai_model_name,
+        response_language=response_language,
+        max_output_tokens=max_output_tokens,
+        temperature=temperature,
+    )
     
     try:
         rag.load_index()
@@ -180,11 +186,11 @@ def health():
     return {"status": "ok", "index_ready": rag.is_ready(), "chunk_count": chunk_count}
 
 
-def _is_about_maclenin(question: str) -> bool:
-    """Kiểm tra xem câu hỏi có liên quan đến maclenin (cấu hình chatbot) không."""
+def _is_about_vivi(question: str) -> bool:
+    """Kiểm tra xem câu hỏi có liên quan đến vivi (cấu hình chatbot) không."""
     question_lower = question.lower()
     keywords = [
-        "maclenin", "máclênin", 
+        "vivi", 
         "cấu hình", "cấu hình chatbot", 
         "chatbot của bạn", 
         "bạn là ai", "who are you", "what is your name",
@@ -195,41 +201,27 @@ def _is_about_maclenin(question: str) -> bool:
     return any(keyword in question_lower for keyword in keywords)
 
 
+# Đã xóa hàm _needs_web_search - websearch giờ được bật thủ công qua nút toggle
+
+
 def _get_bot_config_info() -> str:
     """Trả về thông tin cấu hình chatbot."""
-    model_type = os.getenv("MODEL_TYPE", "openai").lower()
+    ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://server.nhotin.space:11434")
+    ollama_model_name = os.getenv("OLLAMA_MODEL_NAME", "gpt-oss:20b")
+    openai_model_name = os.getenv("OPENAI_MODEL_NAME", "gpt-4.1-nano")
     
     info_parts = [
-        "👋 Xin chào! Tôi là Maclenin, một chatbot hỗ trợ thông tin dựa trên RAG (Retrieval-Augmented Generation).",
+        "👋 Xin chào! Tôi là ViVi, một chatbot hỗ trợ thông tin dựa trên RAG (Retrieval-Augmented Generation).",
         "",
-        "📋 **Cấu hình hiện tại:**",
-        f"- **Loại model:** {model_type.upper()}",
+
+        "- **Tôi được tạo ra:** Để tự động chọn model phù hợp dựa trên loại câu hỏi của bạn",
+
     ]
     
-    if model_type == "ollama":
-        base_url = os.getenv("OLLAMA_BASE_URL", "http://server.nhotin.space:11434")
-        model_name = os.getenv("OLLAMA_MODEL_NAME", "gpt-oss:20b")
+    if openai_model_name.startswith("gpt-4.1-nano"):
         info_parts.extend([
-            f"- **Server Ollama:** {base_url}",
-            f"- **Model:** {model_name}",
-        ])
-    else:
-        model_name = os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini")
-        info_parts.extend([
-            f"- **Model:** {model_name}",
-        ])
-    
-    info_parts.extend([
-        "",
-        "🔧 **Tính năng:**",
-        "- Tìm kiếm thông tin từ database vector",
-        "- Trả lời câu hỏi dựa trên ngữ cảnh RAG",
-    ])
-    
-    if model_type == "openai" and model_name.startswith("gpt-4.1"):
-        info_parts.extend([
-            "- Hỗ trợ web search",
-            "- Hỗ trợ xử lý hình ảnh và file",
+            "- Hỗ trợ web search (OpenAI)",
+            "- Hỗ trợ xử lý hình ảnh và file (OpenAI)",
         ])
     
     info_parts.append("")
@@ -242,8 +234,8 @@ def _get_bot_config_info() -> str:
 def query(req: QueryRequest):
     start = time.perf_counter()
     
-    # Kiểm tra nếu câu hỏi về maclenin thì trả về thông tin cấu hình
-    if _is_about_maclenin(req.question):
+    # Kiểm tra nếu câu hỏi về vivi thì trả về thông tin cấu hình
+    if _is_about_vivi(req.question):
         answer = _get_bot_config_info()
         elapsed_ms = int((time.perf_counter() - start) * 1000)
         return {
@@ -262,22 +254,34 @@ def query(req: QueryRequest):
     contexts_max = int(config.get("contexts_max", 3))
     contexts_for_llm = filtered[:contexts_max]
     
-    model_type = os.getenv("MODEL_TYPE", "openai").lower()
-    if model_type == "ollama":
-        answer, meta = llm_client.answer(
-            req.question, 
-            contexts_for_llm
-        )
-    else:
-        image_urls = req.image_urls or []
-        file_urls = req.file_urls or []
-        use_websearch = req.use_websearch or False
-        answer, meta = llm_client.answer(
-            req.question, 
-            contexts_for_llm, 
+    # Websearch được bật thủ công qua nút toggle từ frontend
+    use_websearch = req.use_websearch or False
+    
+    # Debug logging
+    import logging
+    logging.basicConfig(level=logging.DEBUG)
+    logger = logging.getLogger(__name__)
+    logger.debug(f"Query request: use_websearch={use_websearch}, model={openai_client.model_name}, use_responses_endpoint={openai_client.use_responses_endpoint}")
+    
+    # Xử lý: có ảnh HOẶC bật web search → GPT-4.1 nano (OpenAI), không có → GPT-OSS (Ollama)
+    image_urls = req.image_urls or []
+    file_urls = req.file_urls or []
+    has_images = len(image_urls) > 0 or len(file_urls) > 0
+    
+    if has_images or use_websearch:
+        # Có ảnh hoặc bật web search → gọi GPT-4.1 nano (OpenAI)
+        answer, meta = openai_client.answer(
+            req.question,
+            contexts_for_llm,
             image_urls=image_urls if image_urls else None,
             file_urls=file_urls if file_urls else None,
             use_websearch=use_websearch
+        )
+    else:
+        # Không có ảnh và không cần web search → dùng GPT-OSS (Ollama)
+        answer, meta = ollama_client.answer(
+            req.question, 
+            contexts_for_llm
         )
     elapsed_ms = int((time.perf_counter() - start) * 1000)
     return {
@@ -344,8 +348,8 @@ async def query_with_upload(
     """Query với hỗ trợ upload file (text/ảnh)."""
     start = time.perf_counter()
     
-    # Kiểm tra nếu câu hỏi về maclenin thì trả về thông tin cấu hình
-    if _is_about_maclenin(question):
+    # Kiểm tra nếu câu hỏi về vivi thì trả về thông tin cấu hình
+    if _is_about_vivi(question):
         answer = _get_bot_config_info()
         elapsed_ms = int((time.perf_counter() - start) * 1000)
         return {
@@ -393,19 +397,26 @@ async def query_with_upload(
     contexts_max = int(config.get("contexts_max", 3))
     contexts_for_llm.extend(filtered[:contexts_max])
     
-    model_type = os.getenv("MODEL_TYPE", "openai").lower()
-    if model_type == "ollama":
-        answer, meta = llm_client.answer(
-            question, 
-            contexts_for_llm
-        )
-    else:
-        answer, meta = llm_client.answer(
-            question, 
-            contexts_for_llm, 
+    # Websearch được bật thủ công qua nút toggle từ frontend
+    use_websearch = use_websearch or False
+    
+    # Xử lý: có ảnh HOẶC bật web search → GPT-4.1 nano (OpenAI), không có → GPT-OSS (Ollama)
+    has_images = len(image_urls) > 0
+    
+    if has_images or use_websearch:
+        # Có ảnh hoặc bật web search → gọi GPT-4.1 nano (OpenAI)
+        answer, meta = openai_client.answer(
+            question,
+            contexts_for_llm,
             image_urls=image_urls if image_urls else None,
             file_urls=None,
             use_websearch=use_websearch
+        )
+    else:
+        # Không có ảnh và không cần web search → dùng GPT-OSS (Ollama)
+        answer, meta = ollama_client.answer(
+            question, 
+            contexts_for_llm
         )
     elapsed_ms = int((time.perf_counter() - start) * 1000)
     return {

@@ -9,7 +9,7 @@ function HomePage() {
           <img
             className="block w-[150px] sm:w-[200px] h-auto mb-6"
             src={robot_img}
-            alt="LegalBizAI"
+            alt="ViVi"
           />
           <h1 className="text-2xl lg:text-4xl font-bold" style={{ color: 'rgb(217 131 87)' }}>
             Xin chào! Mình là
@@ -18,7 +18,7 @@ function HomePage() {
             ViVi Chat
           </h1>
           <p className="py-6 font-semibold text-sm lg:text-lg">
-            Giúp bạn giải đáp thắc mắc về luật doanh nghiệp, tra cứu thông tin pháp lý một cách nhanh chóng!
+            Giúp bạn giải đáp thắc mắc về MLN131, tra cứu thông tin một cách nhanh chóng!
           </p>
           <Link to="/chat">
             <button className="btn btn-info bg-gradient-to-r from-orange-400 to-orange-600 text-white">

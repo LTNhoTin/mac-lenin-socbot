@@ -90,6 +90,11 @@ function NavBar() {
                   Báo lỗi/Góp ý
                 </Link>
               </li>
+              <li>
+                <Link to="/technology" style={getStyle('/technology')} onClick={() => handleLinkClick('/technology')}>
+                  Công nghệ
+                </Link>
+              </li>
             </ul>
           )}
         </div>
@@ -151,6 +156,17 @@ function NavBar() {
               onMouseLeave={() => setHoveredTab(null)}
             >
               Báo lỗi/ Góp ý
+            </button>
+          </li>
+          <li className="p-1">
+            <button
+              onClick={() => handleLinkClick("/technology")}
+              style={getStyle('/technology')}
+              className={location.pathname === "/technology" ? "btn btn-outline btn-primary" : ""}
+              onMouseEnter={() => setHoveredTab('/technology')}
+              onMouseLeave={() => setHoveredTab(null)}
+            >
+              Công nghệ
             </button>
           </li>
         </ul>

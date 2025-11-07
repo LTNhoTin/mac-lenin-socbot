@@ -14,7 +14,7 @@
   "similarity_threshold": 0.6,
   "contexts_max": 3,
   "response_language": "vi",
-  "max_output_tokens": 150,
+  "max_output_tokens": 2048,
   "temperature": 0.2,
   "backend": "gemma"
 }

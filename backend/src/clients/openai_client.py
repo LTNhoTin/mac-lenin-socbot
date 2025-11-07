@@ -8,13 +8,16 @@ class OpenAIClient:
     def __init__(
         self,
         api_key: str,
-        model_name: str = "gpt-4o-mini",
+        model_name: Optional[str] = None,
         response_language: str = "vi",
-        max_output_tokens: int = 150,
+        max_output_tokens: int = 2048,
         temperature: float = 0.2,
     ):
         self.client = OpenAI(api_key=api_key)
         self.api_key = api_key
+        # Đọc model name từ env nếu không được truyền vào
+        if model_name is None:
+            model_name = os.getenv("OPENAI_MODEL_NAME", "gpt-4.1-nano")
         self.model_name = model_name
         self.response_language = response_language
         self.max_output_tokens = max_output_tokens
@@ -73,14 +76,59 @@ class OpenAIClient:
                 content.append({"type": "image_url", "image_url": {"url": img_url}})
             messages = [{"role": "user", "content": content}]
         
+        # Thêm tools cho websearch nếu được bật
+        create_kwargs = {
+            "model": self.model_name,
+            "messages": messages,
+            "max_tokens": self.max_output_tokens,
+            "temperature": self.temperature,
+        }
+        
+        if use_websearch:
+            # Thêm websearch tool cho chat/completions endpoint
+            # Format: {"type": "function", "function": {...}}
+            create_kwargs["tools"] = [{
+                "type": "function",
+                "function": {
+                    "name": "web_search",
+                    "description": "Tìm kiếm thông tin trên web để trả lời câu hỏi về thông tin thời sự, giá cả, hoặc các thông tin cần cập nhật mới nhất",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "Truy vấn tìm kiếm trên web"
+                            }
+                        },
+                        "required": ["query"]
+                    }
+                }
+            }]
+        
         try:
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=messages,
-                max_tokens=self.max_output_tokens,
-                temperature=self.temperature,
-            )
-            answer = response.choices[0].message.content
+            response = self.client.chat.completions.create(**create_kwargs)
+            message = response.choices[0].message
+            
+            # Xử lý tool calls nếu model gọi function tool
+            if message.tool_calls:
+                # Kiểm tra xem có phải web_search tool không
+                has_web_search = any(
+                    tool_call.function.name == "web_search" 
+                    for tool_call in message.tool_calls
+                )
+                
+                if has_web_search:
+                    # Nếu model gọi web_search tool, fallback sang /v1/responses endpoint
+                    # vì web_search không phải function thực sự mà là built-in
+                    return self._answer_with_responses_endpoint(
+                        question, contexts, image_urls, file_urls, use_websearch=True
+                    )
+                else:
+                    # Nếu là tool khác, lấy content nếu có
+                    answer = message.content or "Đang xử lý..."
+            else:
+                answer = message.content or ""
+            
             return answer, {"model": self.model_name}
         except Exception as e:
             return f"Lỗi gọi OpenAI: {str(e)}", {"model": self.model_name, "error": str(e)}
@@ -101,6 +149,7 @@ class OpenAIClient:
         }
         
         if use_websearch:
+            # Thử cả hai format để xem cái nào hoạt động
             request_body["tools"] = [{"type": "web_search_preview"}]
         
         if image_urls or file_urls:
@@ -133,6 +182,12 @@ class OpenAIClient:
                 "Authorization": f"Bearer {self.api_key}"
             }
             
+            # Debug logging
+            import logging
+            logging.basicConfig(level=logging.DEBUG)
+            logger = logging.getLogger(__name__)
+            logger.debug(f"OpenAI request: model={self.model_name}, use_websearch={use_websearch}, request_body={request_body}")
+            
             response = requests.post(
                 "https://api.openai.com/v1/responses",
                 headers=headers,
@@ -142,10 +197,36 @@ class OpenAIClient:
             response.raise_for_status()
             
             result = response.json()
-            if "choices" in result and len(result["choices"]) > 0:
+            
+            # Debug logging response
+            logger.debug(f"OpenAI response status: {response.status_code}, result keys: {result.keys() if isinstance(result, dict) else 'not a dict'}")
+            
+            # Xử lý response format mới với output array
+            answer = ""
+            citations = []
+            
+            if "output" in result and isinstance(result["output"], list):
+                # Tìm message item trong output array
+                for output_item in result["output"]:
+                    if output_item.get("type") == "message":
+                        content_list = output_item.get("content", [])
+                        for content_item in content_list:
+                            if content_item.get("type") == "output_text":
+                                answer = content_item.get("text", "")
+                                # Trích xuất citations nếu có
+                                annotations = content_item.get("annotations", [])
+                                for ann in annotations:
+                                    if ann.get("type") == "url_citation":
+                                        citations.append({
+                                            "url": ann.get("url", ""),
+                                            "title": ann.get("title", ""),
+                                            "start_index": ann.get("start_index"),
+                                            "end_index": ann.get("end_index")
+                                        })
+                        break
+            elif "choices" in result and len(result["choices"]) > 0:
+                # Fallback cho format cũ
                 answer = result["choices"][0].get("message", {}).get("content", "")
-            elif "output" in result:
-                answer = result["output"]
             elif "text" in result:
                 answer = result["text"]
             elif isinstance(result, str):
@@ -153,7 +234,16 @@ class OpenAIClient:
             else:
                 answer = str(result)
             
-            return answer, {"model": self.model_name, "endpoint": "/v1/responses"}
+            meta = {
+                "model": self.model_name,
+                "endpoint": "/v1/responses",
+                "use_websearch": use_websearch
+            }
+            
+            if citations:
+                meta["citations"] = citations
+            
+            return answer, meta
         except requests.exceptions.RequestException as e:
             error_msg = str(e)
             if hasattr(e, 'response') and e.response is not None:

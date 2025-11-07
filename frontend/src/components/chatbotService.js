@@ -1,11 +1,16 @@
 // chatbotService.js
-export const sendMessageChatService = async (promptInput, model) => {
-    const response = await fetch('http://127.0.0.1:8000/stream', {
+export const sendMessageChatService = async (promptInput, model, imageUrl = null, useWebsearch = false) => {
+    const requestBody = {
+      question: promptInput,
+      top_k: null,
+      image_urls: imageUrl ? [imageUrl] : null,
+      file_urls: null,
+      use_websearch: useWebsearch
+    };
+
+    const response = await fetch('http://127.0.0.1:8000/query', {
       method: "post",
-      body: JSON.stringify({
-        message: promptInput,
-        model: model
-      }),
+      body: JSON.stringify(requestBody),
       headers: new Headers({
         "ngrok-skip-browser-warning": "69420",
         "Content-Type": "application/json"
@@ -17,5 +22,10 @@ export const sendMessageChatService = async (promptInput, model) => {
     }
     
     const result = await response.json();
-    return result;
+    // Transform response to match expected format
+    return {
+      result: result.answer || result.result,
+      source_documents: result.contexts || [],
+      references: result.meta || {}
+    };
   };
