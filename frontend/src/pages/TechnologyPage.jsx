@@ -247,64 +247,6 @@ function TechnologyPage() {
             </div>
           </div>
 
-          {/* Special Features */}
-          <div className="card bg-white shadow-lg rounded-xl overflow-hidden">
-            <div className="card-body p-8">
-              <div className="text-center mb-8">
-                <h2 className="text-3xl font-bold mb-2 bg-clip-text text-transparent bg-gradient-to-r from-orange-500 via-purple-500 to-pink-500">
-                  ✨ Tính Năng Đặc Biệt
-                </h2>
-                <p className="text-gray-600 text-sm">Những tính năng nổi bật làm nên sự khác biệt của ViVi</p>
-              </div>
-              
-              <div className="grid md:grid-cols-3 gap-6">
-                {/* Vision AI Card */}
-                <div className="group relative bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-2xl border-2 border-orange-200 hover:border-orange-400 transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-                  <div className="absolute top-4 right-4 text-4xl opacity-20 group-hover:opacity-30 transition-opacity">👁️</div>
-                  <div className="relative z-10">
-                    <div className="w-14 h-14 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 transition-transform">
-                      <span className="text-2xl">🖼️</span>
-                    </div>
-                    <h3 className="font-bold text-xl mb-3 text-orange-800">Vision AI</h3>
-                    <p className="text-gray-700 text-sm leading-relaxed">
-                      Xử lý hình ảnh thông minh với <strong className="text-orange-700">GPT-4.1 nano</strong> của OpenAI. 
-                      Upload ảnh và đặt câu hỏi trực tiếp về nội dung trong hình ảnh.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Web Search Card */}
-                <div className="group relative bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-2xl border-2 border-blue-200 hover:border-blue-400 transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-                  <div className="absolute top-4 right-4 text-4xl opacity-20 group-hover:opacity-30 transition-opacity">🌐</div>
-                  <div className="relative z-10">
-                    <div className="w-14 h-14 bg-gradient-to-br from-blue-400 to-blue-600 rounded-xl flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 transition-transform">
-                      <span className="text-2xl">🔍</span>
-                    </div>
-                    <h3 className="font-bold text-xl mb-3 text-blue-800">Web Search</h3>
-                    <p className="text-gray-700 text-sm leading-relaxed">
-                      Tích hợp <strong className="text-blue-700">OpenAI Web Search API</strong> để bổ sung thông tin 
-                      mới nhất từ internet, đảm bảo câu trả lời luôn cập nhật với dữ liệu thời gian thực.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Multi-turn Conversation Card */}
-                <div className="group relative bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-2xl border-2 border-green-200 hover:border-green-400 transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-                  <div className="absolute top-4 right-4 text-4xl opacity-20 group-hover:opacity-30 transition-opacity">💬</div>
-                  <div className="relative z-10">
-                    <div className="w-14 h-14 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 transition-transform">
-                      <span className="text-2xl">🔄</span>
-                    </div>
-                    <h3 className="font-bold text-xl mb-3 text-green-800">Multi-turn Conversation</h3>
-                    <p className="text-gray-700 text-sm leading-relaxed">
-                      Hỗ trợ hội thoại đa lượt với <strong className="text-green-700">context memory</strong>, 
-                      giúp cuộc trò chuyện tự nhiên và liên tục hơn.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
